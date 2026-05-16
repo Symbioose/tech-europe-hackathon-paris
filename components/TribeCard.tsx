@@ -27,11 +27,17 @@ export function TribeCard({ tribe, score, isWinner, index }: Props) {
       animate={{ opacity: 1, x: 0 }}
       transition={{ duration: 0.35, delay: index * 0.04 }}
       className={clsx(
-        "group relative rounded-xl border bg-ink-850/80 backdrop-blur-sm p-3.5 transition-all",
+        "group relative rounded-xl border backdrop-blur-2xl p-3.5 transition-all",
         isWinner
           ? "border-flame-400/70 shadow-glow"
-          : "border-ink-700/70 hover:border-ink-600",
+          : "border-white/12 hover:border-white/25",
       )}
+      style={{
+        background: isWinner
+          ? "linear-gradient(135deg, rgba(255,122,26,0.14), rgba(255,255,255,0.04))"
+          : "rgba(255,255,255,0.05)",
+        boxShadow: "inset 0 1px 0 rgba(255,255,255,0.08)",
+      }}
     >
       {isWinner && (
         <motion.div

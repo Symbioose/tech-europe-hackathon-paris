@@ -84,7 +84,7 @@ export type Recommendation = {
   whyItWon: string;
   nextAction: string;
   videoUrl?: string;
-  ranker: "pioneer" | "deterministic";
+  ranker: "deterministic" | "live";
 };
 
 export type Session = {

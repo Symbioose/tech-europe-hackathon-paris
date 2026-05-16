@@ -92,7 +92,7 @@ const tribeSeeds: Record<string, AgentSeed[]> = {
   ],
 };
 
-const clusterCenters: Record<string, { cx: number; cy: number }> = {
+export const clusterCenters: Record<string, { cx: number; cy: number }> = {
   tribe_1: { cx: 18, cy: 26 },
   tribe_2: { cx: 50, cy: 18 },
   tribe_3: { cx: 82, cy: 26 },

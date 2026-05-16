@@ -13,7 +13,7 @@ export const recommendation: Recommendation = {
   nextAction:
     "Tomorrow: post the 3am hook on LinkedIn from a founder account. Send paid traffic to the 'last night's reason' landing page. Skip Instagram for week one — LinkedIn is where the burnt-out reader scrolls at midnight.",
   videoUrl: "/demo/winner-video.mp4",
-  ranker: "deterministic",
+  ranker: "deterministic" as const,
 };
 
 export const heroBuyerFeedback =

@@ -1,22 +1,18 @@
 import type { RoundResult, Recommendation } from "@/lib/types";
 
-export async function pioneerRank(
-  rounds: RoundResult[],
+/**
+ * Placeholder for a future fine-tuned reaction classifier.
+ *
+ * The natural next step for Crucible is to fine-tune a small model (e.g. via
+ * Pioneer) that classifies each buyer reaction into {intent, objection,
+ * confidence} and uses those structured outputs to rank the winning tribe and
+ * surface the dominant objection. We did not ship a proper fine-tune for the
+ * hackathon, so this wrapper is intentionally NOT wired into /api/finalize and
+ * is exported only as a stub describing the integration surface. The current
+ * demo uses deterministic ranking from the round results.
+ */
+export async function rankReactionsLive(
+  _rounds: RoundResult[],
 ): Promise<Recommendation | null> {
-  const key = process.env.PIONEER_API_KEY;
-  if (!key) return null;
-  try {
-    const res = await fetch("https://api.pioneer.dev/v1/rank", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${key}`,
-      },
-      body: JSON.stringify({ rounds }),
-    });
-    if (!res.ok) return null;
-    return (await res.json()) as Recommendation;
-  } catch {
-    return null;
-  }
+  return null;
 }

@@ -47,7 +47,7 @@ export function RightPanel({
   return (
     <div className="h-full flex flex-col gap-3 min-h-0">
       {/* Metrics header */}
-      <div className="rounded-xl border border-ink-700/70 bg-ink-850/80 p-4">
+      <div className="rounded-xl border border-white/12 bg-white/5 backdrop-blur-2xl shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] p-4">
         <div className="flex items-center justify-between">
           <div>
             <div className="text-[10px] uppercase tracking-[0.18em] text-ink-400">
@@ -235,8 +235,6 @@ export function RightPanel({
           <span>fal</span>
           <span>·</span>
           <span>Gradium</span>
-          <span>·</span>
-          <span>Pioneer</span>
         </span>
       </div>
     </div>
@@ -296,12 +294,12 @@ function ActionButton({
       className={clsx(
         "w-full px-4 py-3 rounded-xl text-left transition-all border",
         disabled
-          ? "bg-ink-850 border-ink-700/70 cursor-not-allowed"
+          ? "bg-white/[0.06] border-ink-700/70 cursor-not-allowed"
           : tone === "winner"
           ? "bg-gradient-to-r from-plasma/15 to-flame-500/15 border-plasma/40 hover:border-plasma"
           : tone === "ready"
-          ? "bg-ink-850 border-ink-700 hover:border-flame-500"
-          : "bg-ink-850 border-ink-700 hover:border-flame-500",
+          ? "bg-white/[0.06] border-ink-700 hover:border-flame-500"
+          : "bg-white/[0.06] border-ink-700 hover:border-flame-500",
       )}
     >
       <div className="flex items-center justify-between gap-2">
@@ -335,7 +333,7 @@ function Panel({
   children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-xl border border-ink-700/70 bg-ink-850/80 backdrop-blur-sm">
+    <div className="rounded-xl border border-white/12 bg-white/5 backdrop-blur-2xl shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-sm">
       <div className="flex items-center justify-between px-3.5 py-2 border-b border-ink-700/60">
         <h3 className="text-[11px] uppercase tracking-[0.18em] text-ink-400">{title}</h3>
         {badge && (
@@ -385,7 +383,7 @@ function RecommendationCard({
         <div className="text-[10px] uppercase tracking-[0.18em] text-plasma">Launch decision</div>
         <div className="h-px flex-1 bg-plasma/20" />
         <span className="text-[9px] uppercase tracking-[0.18em] text-ink-400 border border-ink-600 px-1.5 py-0.5 rounded">
-          {rec.ranker === "pioneer" ? "Pioneer" : "Deterministic"}
+          {rec.ranker === "live" ? "Live ranking" : "Deterministic ranking"}
         </span>
       </div>
       <div className="text-[13px] text-ink-50 font-semibold leading-snug">

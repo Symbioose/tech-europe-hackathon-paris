@@ -39,8 +39,9 @@ Most founders burn a week and thousands of euros testing the wrong launch messag
 | Tavily    | URL extraction, competitor + viral trend signals              | Live with `TAVILY_API_KEY`; falls back to demo data   |
 | fal       | Winning short-form video creative for the recommendation     | Live with `FAL_KEY`; falls back to cached video path  |
 | Gradium   | Hero buyer voice response                                     | Live with `GRADIUM_API_KEY`; falls back to a cached macOS-synthesized clip |
-| Pioneer   | Final ranking of winning tribe + objection classification    | Live with `PIONEER_API_KEY`; deterministic fallback   |
 | SLNG      | Future outbound voice campaign layer (mentioned, not built)  | —                                                     |
+
+The current demo uses **deterministic ranking** to pick the winning tribe and surface the dominant objection. Pioneer is the natural next step for a fine-tuned reaction classifier (intent + objection + confidence), but the current hackathon demo uses deterministic ranking for reliability — see `lib/integrations/pioneer.ts` for the placeholder wrapper.
 
 ## Run locally
 
@@ -64,7 +65,6 @@ TAVILY_API_KEY=...
 FAL_KEY=...
 GRADIUM_API_KEY=...
 GRADIUM_VOICE_ID=claire-eu
-PIONEER_API_KEY=...
 ```
 
 Live mode kicks in when the product URL is not Oura. If any sponsor API fails or times out, the route falls back to the deterministic demo data — every call is wrapped in try/catch and never blocks the UI for more than ~5s.

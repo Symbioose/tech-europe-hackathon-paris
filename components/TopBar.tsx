@@ -23,7 +23,14 @@ export function TopBar({ onRun, disabled, busyLabel }: Props) {
   const [platform, setPlatform] = useState<Platform>("auto");
 
   return (
-    <div className="w-full px-6 py-4 border-b border-ink-700/70 bg-ink-900/80 backdrop-blur-md sticky top-0 z-40">
+    <div
+      className="w-full px-6 py-4 border-b border-white/10 backdrop-blur-2xl sticky top-0 z-40"
+      style={{
+        background:
+          "linear-gradient(180deg, rgba(10,12,22,0.85), rgba(10,12,22,0.45))",
+        boxShadow: "inset 0 1px 0 rgba(255,255,255,0.05)",
+      }}
+    >
       <div className="flex items-center gap-5">
         <div className="flex items-center gap-2.5 shrink-0">
           <div className="relative">
@@ -50,14 +57,14 @@ export function TopBar({ onRun, disabled, busyLabel }: Props) {
               onChange={(e) => setUrl(e.target.value)}
               disabled={disabled}
               placeholder="Paste product URL…"
-              className="w-full px-4 py-2.5 rounded-lg bg-ink-850 border border-ink-700 focus:border-flame-500 focus:outline-none text-sm placeholder:text-ink-400 transition-colors disabled:opacity-60"
+              className="w-full px-4 py-2.5 rounded-lg bg-white/[0.06] border border-ink-700 focus:border-flame-500 focus:outline-none text-sm placeholder:text-ink-400 transition-colors disabled:opacity-60"
             />
             <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] uppercase tracking-[0.18em] text-ink-400">
               URL
             </span>
           </div>
 
-          <div className="flex items-center gap-1 p-1 rounded-lg bg-ink-850 border border-ink-700">
+          <div className="flex items-center gap-1 p-1 rounded-lg bg-white/[0.06] border border-ink-700">
             {platforms.map((p) => (
               <button
                 key={p.id}

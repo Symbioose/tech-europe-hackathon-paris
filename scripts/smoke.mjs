@@ -5,7 +5,9 @@ const BASE = process.env.BASE_URL ?? "http://localhost:3030";
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const run = async () => {
-  const browser = await chromium.launch();
+  const browser = await chromium.launch({
+  args: ["--use-gl=angle", "--use-angle=swiftshader", "--ignore-gpu-blocklist"],
+});
   const page = await browser.newPage({ viewport: { width: 1480, height: 920 } });
 
   const errors = [];
@@ -42,18 +44,22 @@ const run = async () => {
   await wait(3000);
   await page.screenshot({ path: "/tmp/smk-5-r3.png" });
 
-  console.log("→ click hero buyer");
-  // Find the hero buyer button.
-  const hero = await page.locator('button[aria-label*="Claire Bertrand"]').first();
-  await hero.click();
+  console.log("→ expand activity feed");
+  await page.locator("button:has-text('Buyer reactions')").first().click();
+  await wait(500);
+  await page.screenshot({ path: "/tmp/smk-6-feed.png" });
+
+  console.log("→ click Claire's praise message");
+  // Click the feed item with Claire's name (opens BuyerDrawer via agent_id link).
+  await page.locator("text=Claire Bertrand").first().click();
   await wait(700);
-  await page.screenshot({ path: "/tmp/smk-6-drawer.png" });
+  await page.screenshot({ path: "/tmp/smk-7-drawer.png" });
 
   console.log("→ ask question");
   await page.fill('input[placeholder*="Why did you click"]', "Why did you click?");
   await page.getByRole("button", { name: /^Ask$/i }).click();
   await wait(1500);
-  await page.screenshot({ path: "/tmp/smk-7-answer.png" });
+  await page.screenshot({ path: "/tmp/smk-8-answer.png" });
 
   if (errors.length) {
     console.error("ERRORS:", errors);

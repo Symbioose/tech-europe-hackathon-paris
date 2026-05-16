@@ -4,9 +4,10 @@ import { useMemo } from "react";
 import { useSession } from "@/lib/session";
 import { TopBar } from "@/components/TopBar";
 import { TribeColumn } from "@/components/TribeColumn";
-import { MarketWorld } from "@/components/MarketWorld";
+import { MarketWorld3D } from "@/components/MarketWorld3D";
 import { RightPanel } from "@/components/RightPanel";
 import { BuyerDrawer } from "@/components/BuyerDrawer";
+import { ActivityFeed } from "@/components/ActivityFeed";
 import type { Platform } from "@/lib/types";
 
 export default function Page() {
@@ -18,6 +19,7 @@ export default function Page() {
     selectedAgentId,
     isWorking,
     signals,
+    feed,
   } = view;
 
   const selectedAgent = useMemo(
@@ -36,11 +38,11 @@ export default function Page() {
   const winnerId = session.recommendation?.winningTribeId;
   const lastRoundScores = session.rounds[session.rounds.length - 1]?.tribeScores ?? [];
 
-  function handleRun(_url: string, _platform: Platform) {
+  function handleRun(url: string, _platform: Platform) {
     if (stage === "idle" || stage === "winner_ready") {
       actions.reset();
       // Slight delay so reset takes effect.
-      setTimeout(() => actions.start(), 20);
+      setTimeout(() => actions.start(url), 20);
     }
   }
 
@@ -64,7 +66,7 @@ export default function Page() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="h-screen flex flex-col overflow-hidden">
       <TopBar
         onRun={handleRun}
         disabled={stage !== "idle" && stage !== "winner_ready"}
@@ -77,7 +79,7 @@ export default function Page() {
         }
       />
 
-      <main className="flex-1 px-6 py-5 grid gap-5 [grid-template-columns:330px_1fr_380px] min-h-0">
+      <main className="flex-1 px-6 py-5 grid gap-5 [grid-template-columns:330px_1fr_380px] grid-rows-[minmax(0,1fr)] min-h-0 overflow-hidden">
         <TribeColumn
           tribes={session.tribes}
           scores={lastRoundScores}
@@ -85,8 +87,8 @@ export default function Page() {
           visible={tribesVisible}
         />
 
-        <div className="min-h-0 relative">
-          <MarketWorld
+        <div className="relative overflow-hidden min-h-0 h-full">
+          <MarketWorld3D
             agents={stage === "idle" || stage === "researching" ? [] : session.agents}
             tribes={session.tribes}
             selectedAgentId={selectedAgentId}
@@ -145,6 +147,12 @@ export default function Page() {
         agent={selectedAgent}
         tribe={selectedTribe}
         onClose={() => actions.selectAgent(null)}
+      />
+
+      <ActivityFeed
+        messages={feed}
+        tribes={session.tribes}
+        onAgentClick={(id) => actions.selectAgent(id)}
       />
     </div>
   );

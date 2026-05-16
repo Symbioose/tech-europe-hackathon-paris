@@ -10,6 +10,7 @@ import {
   assetsByRound,
   baseAgents,
 } from "./demo-data";
+import { feedByRound, type FeedMessage } from "./demo/feed";
 
 export type ViewState = {
   stage: AppStage;
@@ -18,6 +19,7 @@ export type ViewState = {
   selectedAgentId: string | null;
   isWorking: boolean;
   signals: string[];
+  feed: FeedMessage[];
 };
 
 const initial: ViewState = {
@@ -27,6 +29,7 @@ const initial: ViewState = {
   selectedAgentId: null,
   isWorking: false,
   signals: [],
+  feed: [],
 };
 
 const TAVILY_SIGNALS = [
@@ -78,6 +81,7 @@ export function useSession() {
         selectedAgentId: null,
         isWorking: false,
         signals: TAVILY_SIGNALS,
+        feed: [],
       });
     };
     if (stage === "tribes") buildAt(0, false);
@@ -85,6 +89,16 @@ export function useSession() {
     else if (stage === "r2") buildAt(2, false);
     else if (stage === "r3") buildAt(3, false);
     else if (stage === "winner") buildAt(3, true);
+
+    // Build cumulative feed for the URL-stage shortcut too.
+    const fl: FeedMessage[] = [];
+    if (stage === "r1") fl.push(...feedByRound[1]);
+    else if (stage === "r2") fl.push(...feedByRound[1], ...feedByRound[2]);
+    else if (stage === "r3" || stage === "winner")
+      fl.push(...feedByRound[1], ...feedByRound[2], ...feedByRound[3]);
+    if (fl.length > 0) {
+      setTimeout(() => setView((v) => ({ ...v, feed: fl })), 80);
+    }
 
     const select = params.get("select");
     if (select) {
@@ -96,7 +110,7 @@ export function useSession() {
     setView(initial);
   }, []);
 
-  const start = useCallback(async () => {
+  const start = useCallback(async (productUrl?: string) => {
     setView((v) => ({
       ...v,
       stage: "researching",
@@ -104,7 +118,20 @@ export function useSession() {
       isWorking: true,
       currentRound: 0,
       session: buildFallbackSession(),
+      feed: [],
     }));
+
+    // Fire the live /api/run in parallel with the visible signal stream. Whatever
+    // returns first plus the timed-out floor means the demo never stalls.
+    const livePromise = productUrl
+      ? fetch("/api/run", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ productUrl, platform: "auto" }),
+        })
+          .then((r) => (r.ok ? r.json() : null))
+          .catch(() => null)
+      : Promise.resolve(null);
 
     for (let i = 0; i < TAVILY_SIGNALS.length; i++) {
       await delay(360);
@@ -112,7 +139,39 @@ export function useSession() {
     }
 
     await delay(450);
-    setView((v) => ({ ...v, stage: "tribes_ready", isWorking: false }));
+    const live = await Promise.race([
+      livePromise,
+      new Promise<null>((r) => setTimeout(() => r(null), 1500)),
+    ]);
+
+    setView((v) => {
+      const next: ViewState = {
+        ...v,
+        stage: "tribes_ready",
+        isWorking: false,
+      };
+      // If the live call returned a non-Oura set (mode === 'live') AND has 7 tribes,
+      // adopt them so the demo visibly reflects the URL.
+      if (
+        live &&
+        live.mode === "live" &&
+        Array.isArray(live.tribes) &&
+        live.tribes.length === 7
+      ) {
+        next.session = {
+          ...v.session,
+          brief: live.brief ?? v.session.brief,
+          tribes: live.tribes,
+        };
+        if (Array.isArray(live.brief?.trendSignals) && live.brief.trendSignals.length > 0) {
+          next.signals = [...v.signals, ...live.brief.trendSignals.slice(0, 3)];
+        }
+      } else if (live && live.brief?.trendSignals?.length) {
+        // Even in fallback mode, prefer any fresh Tavily signals we got back.
+        next.signals = live.brief.trendSignals.slice(0, 5);
+      }
+      return next;
+    });
   }, []);
 
   const runRound = useCallback(async (round: 1 | 2 | 3) => {
@@ -130,6 +189,7 @@ export function useSession() {
     await delay(350);
     setView((v) => {
       const next = applyRoundState(round, v.session.agents.length === 70 ? v.session.agents : baseAgents);
+      const roundFeed = feedByRound[round] ?? [];
       return {
         ...v,
         session: {
@@ -139,6 +199,7 @@ export function useSession() {
         },
         currentRound: round,
         stage: round === 1 ? "round_1" : round === 2 ? "round_2" : "round_3",
+        feed: [...v.feed, ...roundFeed],
       };
     });
 

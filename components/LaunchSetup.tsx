@@ -87,10 +87,13 @@ export function LaunchSetup({ onLaunch }: Props) {
               transition={{ duration: 0.55, ease: [0.2, 0.7, 0.2, 1] }}
               className="text-center mb-7"
             >
-              <div className="text-[10px] uppercase tracking-[0.32em] text-flame-300/95">
-                Synthetic market research
+              <div className="inline-flex items-center gap-2 rounded-full border border-flame-400/35 bg-flame-400/[0.08] px-3 py-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-flame-300 animate-pulse" />
+                <span className="text-[10px] uppercase tracking-[0.28em] text-flame-200">
+                  Minutes · not weeks
+                </span>
               </div>
-              <h1 className="mt-3 text-[42px] sm:text-[54px] font-semibold tracking-[-0.02em] leading-[1.04]">
+              <h1 className="mt-4 text-[42px] sm:text-[54px] font-semibold tracking-[-0.02em] leading-[1.04]">
                 Test your launch{" "}
                 <span className="bg-gradient-to-r from-flame-300 via-flame-400 to-plasma bg-clip-text text-transparent">
                   before
@@ -101,6 +104,20 @@ export function LaunchSetup({ onLaunch }: Props) {
                 Find out who would buy, why they react, and what to change before
                 you spend a launch week testing it for real.
               </p>
+              <p className="mt-2 text-[12px] text-ink-400">
+                Pre-research before real interviews: narrow the market first, then validate with humans.
+              </p>
+
+              {/* Differentiation stats — fast, cheap, no recruiting */}
+              <div className="mt-5 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-[11px] text-ink-200/95">
+                <Stat value="< 2 min" label="end-to-end run" />
+                <Sep />
+                <Stat value="70" label="synthetic buyers" />
+                <Sep />
+                <Stat value="100×" label="cheaper than user research" />
+                <Sep />
+                <Stat value="0" label="recruiting" />
+              </div>
             </motion.div>
 
             <motion.div
@@ -234,15 +251,23 @@ export function LaunchSetup({ onLaunch }: Props) {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ duration: 0.6, delay: 0.4 }}
-              className="mt-6 flex items-center justify-center gap-3 text-[10.5px] uppercase tracking-[0.24em] text-ink-400"
+              className="mt-7 text-center"
             >
-              <span>OpenAI</span>
-              <Dot />
-              <span>Tavily</span>
-              <Dot />
-              <span>FAL</span>
-              <Dot />
-              <span>Gradium</span>
+              <div className="text-[19px] sm:text-[22px] font-semibold tracking-[-0.01em] text-ink-100">
+                Don't guess.{" "}
+                <span className="bg-gradient-to-r from-flame-300 to-plasma bg-clip-text text-transparent">
+                  Simulate.
+                </span>
+              </div>
+              <div className="mt-3 flex items-center justify-center gap-3 text-[10.5px] uppercase tracking-[0.24em] text-ink-500">
+                <span>OpenAI</span>
+                <Dot />
+                <span>Tavily</span>
+                <Dot />
+                <span>FAL</span>
+                <Dot />
+                <span>Gradium</span>
+              </div>
             </motion.div>
           </div>
         </main>
@@ -287,4 +312,17 @@ function Field({
 
 function Dot() {
   return <span className="w-1 h-1 rounded-full bg-ink-500" />;
+}
+
+function Stat({ value, label }: { value: string; label: string }) {
+  return (
+    <span className="inline-flex items-baseline gap-1.5">
+      <span className="font-semibold text-ink-50">{value}</span>
+      <span className="text-ink-400">{label}</span>
+    </span>
+  );
+}
+
+function Sep() {
+  return <span className="hidden sm:inline-block w-1 h-1 rounded-full bg-ink-500/80" />;
 }

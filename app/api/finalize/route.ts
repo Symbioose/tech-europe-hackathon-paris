@@ -70,6 +70,12 @@ function deterministicBreakdown(
     const clickPct = Math.round((score?.clickRate ?? 0) * 100);
     const convPct = Math.round(conv * 100);
     const objection = score?.topObjections?.[0] ?? tribe.topObjection;
+    const pain = tribe.mainPain.replace(/[.!?]+$/g, "");
+    const currentHook = asset?.hook || `Solve ${pain}`;
+    const improvedHook =
+      verdict === "strong"
+        ? currentHook
+        : `${pain.slice(0, 58)} — with proof before you switch`;
     return {
       tribeId: tribe.id,
       verdict,
@@ -88,15 +94,12 @@ function deterministicBreakdown(
       recommendedChannel: channelFor(tribe),
       recommendedAngle:
         verdict === "strong"
-          ? "Lead with the exact moment the hook described — they already recognize it."
-          : "Reframe the hook around the specific friction this tribe lives with daily.",
+          ? `Lead with the moment behind "${currentHook}" — they already recognize it.`
+          : `Name the pain directly, then remove the objection: ${objection}.`,
       proofToShow: proofFor(tribe),
       recommendedCta: asset?.cta || "See it in action",
       whatToAvoid: `Avoid: "${objection}" — anything that signals this concern will lose them.`,
-      improvedHook:
-        verdict === "strong"
-          ? asset?.hook || `Name the moment they recognized: ${tribe.mainPain}.`
-          : `Open with the moment "${tribe.mainPain.split(".")[0]}" actually happens.`,
+      improvedHook,
       improvedCta:
         verdict === "strong"
           ? asset?.cta || "Try it free"
@@ -104,10 +107,10 @@ function deterministicBreakdown(
       objectionToHandle: objection,
       suggestedQuestions: [
         verdict === "strong"
-          ? `What exact moment made you click on "${asset?.hook ?? "the hook"}"?`
-          : `What part of "${asset?.hook ?? "the message"}" lost you?`,
-        `If you had to rewrite the headline in your own words, what would you say?`,
-        `What single piece of proof would have made the decision obvious?`,
+          ? `What exact moment made you trust "${currentHook}"?`
+          : `What made "${currentHook}" feel risky or irrelevant?`,
+        `What proof would make this worth trying this week?`,
+        `Which words would you use to describe this problem internally?`,
       ],
     };
   });
@@ -168,7 +171,7 @@ async function openaiBreakdown(
   "proofToShow": string (e.g. "API docs + latency benchmark", "ROI calculator + 1 customer quote", "Case study with before/after"),
   "recommendedCta": string (3-5 words, action verb),
   "whatToAvoid": string (1 sentence naming the specific phrase or claim that repels them),
-  "improvedHook": string (one specific MOMENT this tribe recognises, max 14 words, no buzzwords),
+  "improvedHook": string (one specific moment this tribe recognises, max 14 words, no buzzwords, no template phrases like "Open with the moment"),
   "improvedCta": string (3-5 words),
   "objectionToHandle": string (1 short sentence),
   "suggestedQuestions": [<exactly 3 strings>] — concrete questions a founder should ask a buyer from THIS tribe to clarify the result (e.g. "Which line of the hook landed first?", "What proof would have made you click?", "What word in the hook felt off?"). Each question must be short, specific, and impossible to answer with a yes/no.

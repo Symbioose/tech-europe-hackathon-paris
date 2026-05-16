@@ -9,6 +9,7 @@ import {
 import { summarizeProduct, generateTribes, generateAssets } from "@/lib/integrations/openai";
 import type { TavilyResult } from "@/lib/integrations/tavily";
 import type { ProductBrief } from "@/lib/types";
+import { buildFallbackAssetsForTribes } from "@/lib/fallback-assets";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -184,11 +185,10 @@ export async function POST(req: Request) {
           );
 
           if (liveAssets && liveAssets.length === 7) {
-            // Merge live asset fields onto the assetsRound1 shape (preserves any defaults)
             const merged = liveTribes.map((tribe) => {
               const live = liveAssets.find((a) => a.tribeId === tribe.id);
-              const fallback = assetsRound1.find((a) => a.tribeId === tribe.id) ?? assetsRound1[0];
-              if (!live) return { ...fallback, tribeId: tribe.id };
+              const fallback = buildFallbackAssetsForTribes(briefWithSignals, [tribe])[0];
+              if (!live) return fallback;
               return {
                 tribeId: tribe.id,
                 hook: live.hook,
@@ -202,8 +202,9 @@ export async function POST(req: Request) {
             emit("initialAssets", merged);
             emit("done", { mode: "live" });
           } else {
-            // Live tribes but fallback assets — better than nothing
-            emit("initialAssets", assetsRound1);
+            // Live tribes but no OpenAI assets: synthesize product-specific assets.
+            // Never attach Oura demo hooks to a live product.
+            emit("initialAssets", buildFallbackAssetsForTribes(briefWithSignals, liveTribes));
             emit("done", { mode: "live-tribes-fallback-assets" });
           }
         } else {

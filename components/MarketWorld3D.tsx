@@ -581,7 +581,7 @@ export function MarketWorld3D({
       mount.removeChild(renderer.domElement);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [tribes]);
 
   if (!webglOk) {
     return (

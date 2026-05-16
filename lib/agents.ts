@@ -59,7 +59,7 @@ function roleFor(tribe: Tribe, index: number) {
 
 export function buildAgentsForTribes(tribes: Tribe[]): BuyerAgent[] {
   return tribes.flatMap((tribe, tribeIndex) => {
-    const center = clusterCenters[tribe.id] ?? { x: 0, y: 0 };
+    const center = clusterCenters[tribe.id] ?? { cx: 50, cy: 50 };
     return offsets.map(({ dx, dy }, buyerIndex) => ({
       id: `${tribe.id}_buyer_${buyerIndex + 1}`,
       tribeId: tribe.id,

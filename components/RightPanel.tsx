@@ -1,10 +1,11 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import type { AppStage, LaunchAsset, RoundResult, Tribe, Recommendation } from "@/lib/types";
+import type { AppStage, BuyerAgent, LaunchAsset, RoundResult, Tribe, Recommendation } from "@/lib/types";
 import type { TavilyState } from "@/lib/session";
 import { TavilyOrchestrator } from "@/components/TavilyOrchestrator";
 import { RecommendationFourBlocks } from "@/components/RecommendationFourBlocks";
+import { TribePlaybook } from "@/components/TribePlaybook";
 import clsx from "clsx";
 
 type Props = {
@@ -14,11 +15,13 @@ type Props = {
   currentRound: number;
   tribes: Tribe[];
   assets: LaunchAsset[];
+  agents: BuyerAgent[];
   recommendation?: Recommendation;
   isWorking: boolean;
   onAdvance: () => void;
   onFinish: () => void;
   onReset: () => void;
+  onAskBuyer: (agentId: string, question: string) => void;
   tavily: TavilyState;
   videoUrl?: string;
 };
@@ -30,11 +33,13 @@ export function RightPanel({
   currentRound,
   tribes,
   assets,
+  agents,
   recommendation,
   isWorking,
   onAdvance,
   onFinish,
   onReset,
+  onAskBuyer,
   tavily,
   videoUrl,
 }: Props) {
@@ -148,6 +153,17 @@ export function RightPanel({
             </motion.div>
           )}
         </AnimatePresence>
+
+        {/* Per-tribe playbook: 7 actionable cards, each with verdict + questions to ask */}
+        {recommendation && (
+          <TribePlaybook
+            tribes={tribes}
+            scores={lastRound?.tribeScores ?? []}
+            breakdown={recommendation.tribeBreakdown}
+            agents={agents}
+            onAskBuyer={onAskBuyer}
+          />
+        )}
 
         {/* Market intelligence */}
         {stage !== "idle" && (

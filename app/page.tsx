@@ -25,7 +25,7 @@ const testTypeLabel: Record<TestType, string> = {
 
 const defaultSetup: LaunchSetupValues = {
   testType: "marketing_message",
-  productUrl: "https://ouraring.com",
+  productUrl: "https://fal.ai",
   productNote: "",
   targetMarket: "",
   platform: "auto",
@@ -42,6 +42,7 @@ export default function Page() {
     session,
     currentRound,
     selectedAgentId,
+    prefilledQuestion,
     isWorking,
     signals,
     feed,
@@ -198,11 +199,13 @@ export default function Page() {
           currentRound={currentRound}
           tribes={session.tribes}
           assets={session.assets}
+          agents={session.agents}
           recommendation={session.recommendation}
           isWorking={isWorking}
           onAdvance={handleAdvance}
           onFinish={handleFinish}
           onReset={actions.reset}
+          onAskBuyer={actions.askBuyer}
           tavily={tavily}
           videoUrl={videoUrl}
         />
@@ -217,6 +220,7 @@ export default function Page() {
             ? session.assets.find((a) => a.tribeId === selectedTribe.id)?.hook
             : undefined
         }
+        prefilledQuestion={prefilledQuestion}
       />
 
       <ActivityFeed

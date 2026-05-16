@@ -92,6 +92,27 @@ export type RoundResult = {
   regenerationTargets?: RegenerationTarget[];
 };
 
+export type TribeVerdict = "strong" | "refine" | "avoid";
+
+export type TribeRecommendation = {
+  tribeId: string;
+  verdict: TribeVerdict;
+  priority: "High" | "Medium" | "Low";
+  justification: string;
+  whyReacted: string;
+  whatMotivates: string;
+  whatBlocks: string;
+  recommendedChannel: string;
+  recommendedAngle: string;
+  proofToShow: string;
+  recommendedCta: string;
+  whatToAvoid: string;
+  improvedHook: string;
+  improvedCta: string;
+  objectionToHandle: string;
+  suggestedQuestions: string[];
+};
+
 export type Recommendation = {
   winningTribeId: string;
   winningHook: string;
@@ -102,6 +123,7 @@ export type Recommendation = {
   nextAction: string;
   videoUrl?: string;
   ranker: "deterministic" | "live";
+  tribeBreakdown?: TribeRecommendation[];
 };
 
 export type Session = {

@@ -26,6 +26,7 @@ export type ViewState = {
   session: Session;
   currentRound: number;
   selectedAgentId: string | null;
+  prefilledQuestion?: string;
   isWorking: boolean;
   signals: string[];
   feed: FeedMessage[];
@@ -653,6 +654,39 @@ export function useSession() {
     setView((v) => ({ ...v, isWorking: false }));
   }, []);
 
+  function kickOffTribeBreakdown() {
+    const snap = viewRef.current.session;
+    if (!snap?.tribes?.length) return;
+    fetch("/api/finalize", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        brief: snap.brief,
+        tribes: snap.tribes,
+        assets: snap.assets,
+        rounds: snap.rounds,
+      }),
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: { tribeBreakdown?: import("./types").TribeRecommendation[] } | null) => {
+        if (!data?.tribeBreakdown?.length) return;
+        setView((v) => {
+          if (!v.session.recommendation) return v;
+          return {
+            ...v,
+            session: {
+              ...v.session,
+              recommendation: {
+                ...v.session.recommendation,
+                tribeBreakdown: data.tribeBreakdown,
+              },
+            },
+          };
+        });
+      })
+      .catch(() => undefined);
+  }
+
   function kickOffFinaleVideo() {
     const finalSnapshot = viewRef.current.session;
     const lastRound = [...finalSnapshot.rounds].sort((a, b) => b.round - a.round)[0];
@@ -712,7 +746,11 @@ export function useSession() {
   }
 
   const selectAgent = useCallback((id: string | null) => {
-    setView((v) => ({ ...v, selectedAgentId: id }));
+    setView((v) => ({ ...v, selectedAgentId: id, prefilledQuestion: undefined }));
+  }, []);
+
+  const askBuyer = useCallback((id: string, question: string) => {
+    setView((v) => ({ ...v, selectedAgentId: id, prefilledQuestion: question }));
   }, []);
 
   const revealRecommendation = useCallback(() => {
@@ -724,10 +762,12 @@ export function useSession() {
     // Kick off the FAL Veo3 finale generation (best-effort, non-blocking).
     // The recommendation card renders immediately; the video appears when ready.
     setTimeout(() => kickOffFinaleVideo(), 50);
+    // Fetch the rich per-tribe playbook from /api/finalize (OpenAI batch). Non-blocking.
+    setTimeout(() => kickOffTribeBreakdown(), 50);
   }, []);
 
   return {
     view,
-    actions: { start, runRound, selectAgent, reset, revealRecommendation },
+    actions: { start, runRound, selectAgent, askBuyer, reset, revealRecommendation },
   };
 }

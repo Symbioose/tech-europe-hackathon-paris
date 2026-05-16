@@ -14,9 +14,10 @@ type Props = {
   tribe: Tribe | null;
   onClose: () => void;
   hookSeen?: string;
+  prefilledQuestion?: string;
 };
 
-export function BuyerDrawer({ agent, tribe, onClose, hookSeen }: Props) {
+export function BuyerDrawer({ agent, tribe, onClose, hookSeen, prefilledQuestion }: Props) {
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState<string | null>(null);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
@@ -31,14 +32,14 @@ export function BuyerDrawer({ agent, tribe, onClose, hookSeen }: Props) {
   const recRef = useRef<ReturnType<typeof createRecognition> | null>(null);
 
   useEffect(() => {
-    setQuestion("");
+    setQuestion(prefilledQuestion ?? "");
     setAnswer(null);
     setAudioUrl(null);
     setInterim("");
     setTranscript("");
     setAnswerText("");
     setRecordingState("idle");
-  }, [agent?.id]);
+  }, [agent?.id, prefilledQuestion]);
 
   // Pre-warm mic permission on mount
   useEffect(() => {

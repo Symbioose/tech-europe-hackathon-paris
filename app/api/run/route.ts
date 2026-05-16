@@ -19,7 +19,14 @@ function inferProductName(url: string): string {
 }
 
 export async function POST(req: Request) {
-  const body = await req.json().catch(() => ({}));
+  const body = (await req.json().catch(() => ({}))) as {
+    productUrl?: string;
+    platform?: string;
+    testType?: string;
+    productNote?: string;
+    targetMarket?: string;
+    assetMode?: string;
+  };
   const url: string | undefined = body?.productUrl;
 
   if (!url || /ouraring|oura/i.test(url) || process.env.CRUCIBLE_DEMO_MODE === "1") {
@@ -66,6 +73,7 @@ export async function POST(req: Request) {
       description:
         tavily.trendSignals.concat(tavily.competitorSignals).slice(0, 5).join(" · ") ||
         seedBrief.description,
+      market: body.targetMarket || brief.market,
       competitorSignals: tavily.competitorSignals.length
         ? tavily.competitorSignals
         : brief.competitorSignals,
@@ -74,11 +82,29 @@ export async function POST(req: Request) {
         : brief.trendSignals,
       source: "tavily",
     };
+  } else if (body.targetMarket) {
+    brief = { ...brief, market: body.targetMarket };
+  }
+
+  // If the founder gave a one-liner note, lace it into the description so the tribe
+  // generator has the founder's own framing (not just Tavily snippets).
+  if (body.productNote) {
+    brief = {
+      ...brief,
+      description: brief.description
+        ? `${body.productNote} — ${brief.description}`
+        : body.productNote,
+    };
   }
 
   const remaining = Math.max(2000, deadline - Date.now());
   const liveTribes = await Promise.race([
-    generateTribes(brief).catch(() => null),
+    generateTribes(brief, {
+      testType: body.testType,
+      productNote: body.productNote,
+      targetMarket: body.targetMarket,
+      assetMode: body.assetMode,
+    }).catch(() => null),
     new Promise<null>((r) => setTimeout(() => r(null), remaining)),
   ]);
 

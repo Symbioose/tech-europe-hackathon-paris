@@ -33,6 +33,13 @@ export type AgentState =
   | "converted"
   | "repelled";
 
+export type VoiceProfile =
+  | "f-young"
+  | "f-mid"
+  | "m-young"
+  | "m-mid"
+  | "m-mature";
+
 export type BuyerAgent = {
   id: string;
   tribeId: string;
@@ -43,6 +50,7 @@ export type BuyerAgent = {
   state: AgentState;
   feedback?: string;
   isHero?: boolean;
+  voiceProfile?: VoiceProfile;
 };
 
 export type LaunchAsset = {
@@ -53,6 +61,14 @@ export type LaunchAsset = {
   benefits: string[];
   cta: string;
   dmReply: string;
+  creativeUrl?: string;
+  previousHook?: string;
+};
+
+export type RegenerationTarget = {
+  tribeId: string;
+  previousHook: string;
+  failureReason: string;
 };
 
 export type TribeScore = {
@@ -73,6 +89,7 @@ export type RoundResult = {
   failures: string[];
   assets: LaunchAsset[];
   tribeScores: TribeScore[];
+  regenerationTargets?: RegenerationTarget[];
 };
 
 export type Recommendation = {

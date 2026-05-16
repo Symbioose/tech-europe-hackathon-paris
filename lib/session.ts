@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { AppStage, Session } from "./types";
+import type { LaunchSetupValues } from "@/components/LaunchSetup";
 import {
   applyRoundState,
   buildFallbackSession,
@@ -32,13 +33,21 @@ const initial: ViewState = {
   feed: [],
 };
 
-const TAVILY_SIGNALS = [
-  "Whoop fatigue · 38% of r/Whoop posts last month are cancellation threads",
-  "Apple Watch shipped sleep stages — still no readiness score",
-  "Lenny's pod guest count wearing Oura up ~4x in 18 months",
-  "TikTok #HRVanxiety mentions doubling month over month",
-  "Cycle tracking moved private-by-default after the 2022 debate",
+const RESEARCH_STEPS = [
+  "Reading product page",
+  "Extracting competitor signals",
+  "Finding launch patterns",
+  "Generating buyer tribes",
+  "Preparing simulation inputs",
 ];
+
+function buildSignals(session: Session): string[] {
+  const signals = [
+    ...session.brief.trendSignals,
+    ...session.brief.competitorSignals,
+  ].filter(Boolean);
+  return Array.from(new Set(signals)).slice(0, 6);
+}
 
 function delay(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
@@ -47,6 +56,11 @@ function delay(ms: number) {
 export function useSession() {
   const [view, setView] = useState<ViewState>(initial);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const viewRef = useRef<ViewState>(initial);
+
+  useEffect(() => {
+    viewRef.current = view;
+  }, [view]);
 
   useEffect(() => {
     const t = timers.current;
@@ -80,7 +94,13 @@ export function useSession() {
         currentRound: round,
         selectedAgentId: null,
         isWorking: false,
-        signals: TAVILY_SIGNALS,
+        signals: buildSignals({
+          ...buildFallbackSession(),
+          agents,
+          assets,
+          rounds,
+          recommendation: finalize ? fallbackRecommendation : undefined,
+        }),
         feed: [],
       });
     };
@@ -110,7 +130,20 @@ export function useSession() {
     setView(initial);
   }, []);
 
-  const start = useCallback(async (productUrl?: string) => {
+  const start = useCallback(async (setupOrUrl?: LaunchSetupValues | string) => {
+    const setup: LaunchSetupValues =
+      typeof setupOrUrl === "string" || setupOrUrl == null
+        ? {
+            productUrl: typeof setupOrUrl === "string" ? setupOrUrl : "https://ouraring.com",
+            testType: "marketing_message",
+            productNote: "",
+            targetMarket: "",
+            platform: "auto",
+            assetMode: "generate",
+            assetText: "",
+          }
+        : setupOrUrl;
+
     setView((v) => ({
       ...v,
       stage: "researching",
@@ -121,140 +154,105 @@ export function useSession() {
       feed: [],
     }));
 
-    const isOura = !productUrl || /ouraring|oura/i.test(productUrl);
+    const runPromise = fetch("/api/run", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        productUrl: setup.productUrl || "https://ouraring.com",
+        platform: setup.platform,
+        testType: setup.testType,
+        productNote: setup.productNote,
+        targetMarket: setup.targetMarket,
+        assetMode: setup.assetMode,
+      }),
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .catch(() => null);
 
-    const livePromise = productUrl
-      ? fetch("/api/run", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ productUrl, platform: "auto" }),
-        })
-          .then((r) => (r.ok ? r.json() : null))
-          .catch(() => null)
-      : Promise.resolve(null);
-
-    for (let i = 0; i < TAVILY_SIGNALS.length; i++) {
-      await delay(360);
-      setView((v) => ({ ...v, signals: TAVILY_SIGNALS.slice(0, i + 1) }));
+    for (let i = 0; i < RESEARCH_STEPS.length; i++) {
+      await delay(320);
+      setView((v) => ({ ...v, signals: RESEARCH_STEPS.slice(0, i + 1) }));
     }
 
-    if (!isOura) {
-      // Visible progress while waiting on Tavily + OpenAI (12-20s typical).
-      const progressMessages = [
-        "Calling Tavily for competitor + viral signals…",
-        "Reading the live product page…",
-        "Asking OpenAI for 7 customer tribes from this market…",
-        "Drafting tribe profiles…",
-        "Finalizing tribes — almost there…",
-      ];
-      let progressIdx = 0;
-      const progressTimer = setInterval(() => {
-        const msg = progressMessages[progressIdx % progressMessages.length];
-        progressIdx++;
-        setView((v) => ({
-          ...v,
-          signals: [
-            ...v.signals.filter((s) => !s.startsWith("⏳")),
-            `⏳ ${msg}`,
-          ],
-        }));
-      }, 2200);
-
-      const live = await Promise.race([
-        livePromise,
-        new Promise<null>((r) => setTimeout(() => r(null), 35000)),
-      ]);
-
-      clearInterval(progressTimer);
-
-      setView((v) => {
-        const next: ViewState = {
-          ...v,
-          stage: "tribes_ready",
-          isWorking: false,
-          signals: v.signals.filter((s) => !s.startsWith("⏳")),
-        };
-        if (
-          live &&
-          live.mode === "live" &&
-          Array.isArray(live.tribes) &&
-          live.tribes.length === 7
-        ) {
-          next.session = {
-            ...v.session,
-            brief: live.brief ?? v.session.brief,
-            tribes: live.tribes,
-          };
-          if (Array.isArray(live.brief?.trendSignals) && live.brief.trendSignals.length > 0) {
-            next.signals = [...next.signals, ...live.brief.trendSignals.slice(0, 3)];
-          }
-        }
-        return next;
-      });
-      return;
-    }
-
-    const live = await Promise.race([
-      livePromise,
-      new Promise<null>((r) => setTimeout(() => r(null), 1500)),
+    const result = await Promise.race([
+      runPromise,
+      new Promise<null>((r) => setTimeout(() => r(null), 35000)),
     ]);
 
     setView((v) => {
-      const next: ViewState = {
+      const session =
+        result && Array.isArray(result.tribes) && result.tribes.length === 7
+          ? {
+              ...v.session,
+              brief: result.brief ?? v.session.brief,
+              tribes: result.tribes,
+              assets: Array.isArray(result.initialAssets)
+                ? result.initialAssets
+                : v.session.assets,
+              agents: Array.isArray(result.agents) ? result.agents : v.session.agents,
+            }
+          : v.session;
+      const signals = buildSignals(session);
+      return {
         ...v,
         stage: "tribes_ready",
         isWorking: false,
+        session,
+        signals: signals.length ? signals : buildSignals(buildFallbackSession()),
       };
-      if (
-        live &&
-        live.mode === "live" &&
-        Array.isArray(live.tribes) &&
-        live.tribes.length === 7
-      ) {
-        next.session = {
-          ...v.session,
-          brief: live.brief ?? v.session.brief,
-          tribes: live.tribes,
-        };
-        if (Array.isArray(live.brief?.trendSignals) && live.brief.trendSignals.length > 0) {
-          next.signals = [
-            ...v.signals.filter((s) => !s.startsWith("Generating tribes")),
-            ...live.brief.trendSignals.slice(0, 3),
-          ];
-        } else {
-          next.signals = v.signals.filter((s) => !s.startsWith("Generating tribes"));
-        }
-      } else if (live && live.brief?.trendSignals?.length) {
-        next.signals = live.brief.trendSignals.slice(0, 5);
-      } else {
-        next.signals = v.signals.filter((s) => !s.startsWith("Generating tribes"));
-      }
-      return next;
     });
   }, []);
 
   const runRound = useCallback(async (round: 1 | 2 | 3) => {
+    const snapshot = viewRef.current.session;
     setView((v) => ({ ...v, isWorking: true }));
 
     await delay(420);
+
+    const apiResult = await fetch("/api/round", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        round,
+        brief: snapshot?.brief,
+        tribes: snapshot?.tribes,
+        assets: snapshot?.assets,
+        previousRounds: snapshot?.rounds ?? [],
+      }),
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .catch(() => null);
+
+    const updatedAssets = Array.isArray(apiResult?.updatedAssets)
+      ? apiResult.updatedAssets
+      : assetsByRound[round].map((a) => ({ ...a }));
+    const roundResult = apiResult?.roundResult ?? roundResults[round - 1];
+    const updatedAgents = Array.isArray(apiResult?.updatedAgents)
+      ? apiResult.updatedAgents
+      : applyRoundState(
+          round,
+          snapshot?.agents?.length === 70 ? snapshot.agents : baseAgents,
+        );
+
     setView((v) => ({
       ...v,
       session: {
         ...v.session,
-        assets: assetsByRound[round].map((a) => ({ ...a })),
+        assets: updatedAssets,
       },
     }));
 
     await delay(350);
     setView((v) => {
-      const next = applyRoundState(round, v.session.agents.length === 70 ? v.session.agents : baseAgents);
       const roundFeed = feedByRound[round] ?? [];
       return {
         ...v,
         session: {
           ...v.session,
-          agents: next,
-          rounds: roundResults.slice(0, round),
+          agents: updatedAgents,
+          rounds: [...v.session.rounds.filter((r) => r.round !== round), roundResult].sort(
+            (a, b) => a.round - b.round,
+          ),
         },
         currentRound: round,
         stage: round === 1 ? "round_1" : round === 2 ? "round_2" : "round_3",

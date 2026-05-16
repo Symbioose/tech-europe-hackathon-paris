@@ -48,11 +48,28 @@ export async function summarizeProduct(url: string, raw?: string): Promise<Parti
   );
 }
 
-export async function generateTribes(brief: ProductBrief): Promise<Tribe[] | null> {
+export type TribeGenSetup = {
+  testType?: string;
+  productNote?: string;
+  targetMarket?: string;
+  assetMode?: string;
+};
+
+export async function generateTribes(
+  brief: ProductBrief,
+  setup: TribeGenSetup = {},
+): Promise<Tribe[] | null> {
   // Keep the schema lean — every field beyond essentials inflates latency
   // (gpt-4o-mini ~150 tokens/tribe). The fields we drop here (profile,
   // buyingTrigger, priceSensitivity, languageStyle) are filled with sensible
   // defaults below so the rest of the app keeps its type shape.
+  const focus = setup.testType
+    ? `Focus tribes on the decision: ${setup.testType.replace(/_/g, " ")}.`
+    : "";
+  const note = setup.productNote ? `Product context the founder added: ${setup.productNote}.` : "";
+  const market = setup.targetMarket ? `Constrain tribes to: ${setup.targetMarket}.` : "";
+  const systemAddon = [focus, note, market].filter(Boolean).join(" ");
+
   const result = await openaiChat<{
     tribes: Array<{
       id: string;
@@ -64,7 +81,7 @@ export async function generateTribes(brief: ProductBrief): Promise<Tribe[] | nul
       accent: string;
     }>;
   }>(
-    "You are a market strategist for an early-stage product launch. Return strict JSON: {tribes:[7 items]}. Each item: {id (tribe_1..tribe_7), name (3-5 words), platform (instagram|tiktok|linkedin), mainPain (1 short sentence), topObjection (1 short sentence), emoji, accent (hex color like #ff7a1a)}. Tribes must be distinct, vivid, and rooted in real buyer pain — no generic 'enthusiasts'.",
+    `You are a market strategist for an early-stage product launch. ${systemAddon} Return strict JSON: {tribes:[7 items]}. Each item: {id (tribe_1..tribe_7), name (3-5 words), platform (instagram|tiktok|linkedin), mainPain (1 short sentence), topObjection (1 short sentence), emoji, accent (hex color like #ff7a1a)}. Tribes must be distinct, vivid, and rooted in real buyer pain — no generic 'enthusiasts'.`,
     `Product: ${brief.name}\nURL: ${brief.url}\nContext: ${brief.description}\nMarket: ${brief.market}\nCompetitor signals: ${brief.competitorSignals.slice(0, 4).join(" · ")}\nTrend signals: ${brief.trendSignals.slice(0, 4).join(" · ")}`,
   );
   if (!result?.tribes || result.tribes.length !== 7) return null;

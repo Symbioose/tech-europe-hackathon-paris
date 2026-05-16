@@ -179,8 +179,10 @@ export function useSession() {
       new Promise<null>((r) => setTimeout(() => r(null), 35000)),
     ]);
 
+    // Compute the final session inline so we can use it both for setView and creative fetches
+    let finalSession: typeof initial.session = viewRef.current.session;
     setView((v) => {
-      const session =
+      finalSession =
         result && Array.isArray(result.tribes) && result.tribes.length === 7
           ? {
               ...v.session,
@@ -192,15 +194,67 @@ export function useSession() {
               agents: Array.isArray(result.agents) ? result.agents : v.session.agents,
             }
           : v.session;
-      const signals = buildSignals(session);
+      const signals = buildSignals(finalSession);
       return {
         ...v,
         stage: "tribes_ready",
         isWorking: false,
-        session,
+        session: finalSession,
         signals: signals.length ? signals : buildSignals(buildFallbackSession()),
       };
     });
+
+    // Fire 7 parallel creative fetches — do NOT await, so UI transitions immediately
+    // eslint-disable-next-line @typescript-eslint/no-floating-promises
+    (async () => {
+      // Wait one tick for finalSession to be assigned inside the setView callback
+      await Promise.resolve();
+      const sessionForCreatives = finalSession ?? viewRef.current.session;
+      const tribes = sessionForCreatives.tribes ?? [];
+      const productName = sessionForCreatives.brief?.name ?? "Product";
+
+      const fetchCreative = async (index: number) => {
+        const tribe = tribes[index];
+        if (!tribe) return;
+
+        // Find the hook for this tribe from the current assets
+        const assetHook =
+          sessionForCreatives.assets.find((a) => a.tribeId === tribe.id)?.hook ?? "";
+
+        try {
+          const res = await fetch("/api/generate-creative", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              productName,
+              tribeName: tribe.name,
+              tribeIndex: index,
+              hook: assetHook,
+              assetMode: setup.assetMode,
+            }),
+          });
+          if (!res.ok) return;
+          const data = (await res.json()) as { imageUrl?: string };
+          const imageUrl = data.imageUrl;
+          if (!imageUrl) return;
+
+          setView((v) => ({
+            ...v,
+            session: {
+              ...v.session,
+              assets: v.session.assets.map((a) =>
+                a.tribeId === tribe.id ? { ...a, creativeUrl: imageUrl } : a,
+              ),
+            },
+          }));
+        } catch {
+          // silently ignore — shimmer stays until next refresh
+        }
+      };
+
+      // All 7 in parallel
+      await Promise.all(tribes.slice(0, 7).map((_, i) => fetchCreative(i)));
+    })();
   }, []);
 
   const runRound = useCallback(async (round: 1 | 2 | 3) => {

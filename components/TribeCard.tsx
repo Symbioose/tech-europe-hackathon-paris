@@ -9,6 +9,7 @@ type Props = {
   score?: TribeScore;
   isWinner: boolean;
   index: number;
+  creativeUrl?: string;
 };
 
 const platformLabel: Record<string, string> = {
@@ -18,7 +19,7 @@ const platformLabel: Record<string, string> = {
   auto: "AUTO",
 };
 
-export function TribeCard({ tribe, score, isWinner, index }: Props) {
+export function TribeCard({ tribe, score, isWinner, index, creativeUrl }: Props) {
   const conversion = score ? Math.round(score.conversionRate * 100) : 0;
   return (
     <motion.div
@@ -48,6 +49,21 @@ export function TribeCard({ tribe, score, isWinner, index }: Props) {
           Winner
         </motion.div>
       )}
+
+      {/* Creative image slot — 16:9, shimmer while loading */}
+      <div className="mb-3 relative w-full aspect-video rounded-lg overflow-hidden border border-white/10">
+        {creativeUrl ? (
+          <img
+            src={creativeUrl}
+            alt={`${tribe.name} ad creative`}
+            className="w-full h-full object-cover"
+          />
+        ) : (
+          <div className="absolute inset-0 bg-ink-800/80 overflow-hidden">
+            <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-transparent via-white/[0.07] to-transparent" />
+          </div>
+        )}
+      </div>
 
       <div className="flex items-start gap-3">
         <div

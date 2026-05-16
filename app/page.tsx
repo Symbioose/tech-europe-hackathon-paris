@@ -130,6 +130,7 @@ export default function Page() {
         <TribeColumn
           tribes={session.tribes}
           scores={lastRoundScores}
+          assets={session.assets}
           winnerId={winnerId}
           visible={tribesVisible}
         />

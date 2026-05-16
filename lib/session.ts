@@ -121,8 +121,8 @@ export function useSession() {
       feed: [],
     }));
 
-    // Fire the live /api/run in parallel with the visible signal stream. Whatever
-    // returns first plus the timed-out floor means the demo never stalls.
+    const isOura = !productUrl || /ouraring|oura/i.test(productUrl);
+
     const livePromise = productUrl
       ? fetch("/api/run", {
           method: "POST",
@@ -133,15 +133,28 @@ export function useSession() {
           .catch(() => null)
       : Promise.resolve(null);
 
+    // Stream the visible Tavily-style signals first so the panel feels alive
+    // while OpenAI/Tavily run server-side.
     for (let i = 0; i < TAVILY_SIGNALS.length; i++) {
       await delay(360);
       setView((v) => ({ ...v, signals: TAVILY_SIGNALS.slice(0, i + 1) }));
     }
 
-    await delay(450);
+    // For non-Oura URLs we expect to wait on OpenAI tribes; show a "generating"
+    // hint and extend the patience window. For Oura the API returns instantly
+    // and the previous 1.5s floor is plenty.
+    if (!isOura) {
+      setView((v) => ({
+        ...v,
+        signals: [...v.signals, "Generating tribes from the live product page…"],
+      }));
+    }
+
     const live = await Promise.race([
       livePromise,
-      new Promise<null>((r) => setTimeout(() => r(null), 1500)),
+      new Promise<null>((r) =>
+        setTimeout(() => r(null), isOura ? 1500 : 30000),
+      ),
     ]);
 
     setView((v) => {
@@ -150,8 +163,6 @@ export function useSession() {
         stage: "tribes_ready",
         isWorking: false,
       };
-      // If the live call returned a non-Oura set (mode === 'live') AND has 7 tribes,
-      // adopt them so the demo visibly reflects the URL.
       if (
         live &&
         live.mode === "live" &&
@@ -164,11 +175,17 @@ export function useSession() {
           tribes: live.tribes,
         };
         if (Array.isArray(live.brief?.trendSignals) && live.brief.trendSignals.length > 0) {
-          next.signals = [...v.signals, ...live.brief.trendSignals.slice(0, 3)];
+          next.signals = [
+            ...v.signals.filter((s) => !s.startsWith("Generating tribes")),
+            ...live.brief.trendSignals.slice(0, 3),
+          ];
+        } else {
+          next.signals = v.signals.filter((s) => !s.startsWith("Generating tribes"));
         }
       } else if (live && live.brief?.trendSignals?.length) {
-        // Even in fallback mode, prefer any fresh Tavily signals we got back.
         next.signals = live.brief.trendSignals.slice(0, 5);
+      } else {
+        next.signals = v.signals.filter((s) => !s.startsWith("Generating tribes"));
       }
       return next;
     });

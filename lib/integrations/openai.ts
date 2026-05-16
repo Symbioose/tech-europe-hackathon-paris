@@ -24,8 +24,8 @@ async function openaiChat<T>(
           { role: "user", content: user },
         ],
         response_format: schema === "json" ? { type: "json_object" } : undefined,
-        temperature: 0.7,
-        max_tokens: 1200,
+        temperature: 0.6,
+        max_tokens: 900,
       }),
     });
     if (!res.ok) return null;
@@ -49,11 +49,38 @@ export async function summarizeProduct(url: string, raw?: string): Promise<Parti
 }
 
 export async function generateTribes(brief: ProductBrief): Promise<Tribe[] | null> {
-  const result = await openaiChat<{ tribes: Tribe[] }>(
-    "You are a market strategist. Generate exactly 7 distinct customer tribes. Return strict JSON: {tribes: Tribe[]}. Each tribe: {id, name, platform, profile, mainPain, buyingTrigger, topObjection, priceSensitivity, languageStyle, emoji, accent}. Use ids tribe_1..tribe_7. Platforms: instagram | tiktok | linkedin. Accent is a hex color.",
-    `Product: ${brief.name}\n${brief.description}\nMarket: ${brief.market}\nPromise: ${brief.keyPromise}\nCompetitor signals: ${brief.competitorSignals.join("; ")}\nTrend signals: ${brief.trendSignals.join("; ")}`,
+  // Keep the schema lean — every field beyond essentials inflates latency
+  // (gpt-4o-mini ~150 tokens/tribe). The fields we drop here (profile,
+  // buyingTrigger, priceSensitivity, languageStyle) are filled with sensible
+  // defaults below so the rest of the app keeps its type shape.
+  const result = await openaiChat<{
+    tribes: Array<{
+      id: string;
+      name: string;
+      platform: "instagram" | "tiktok" | "linkedin";
+      mainPain: string;
+      topObjection: string;
+      emoji: string;
+      accent: string;
+    }>;
+  }>(
+    "You are a market strategist for an early-stage product launch. Return strict JSON: {tribes:[7 items]}. Each item: {id (tribe_1..tribe_7), name (3-5 words), platform (instagram|tiktok|linkedin), mainPain (1 short sentence), topObjection (1 short sentence), emoji, accent (hex color like #ff7a1a)}. Tribes must be distinct, vivid, and rooted in real buyer pain — no generic 'enthusiasts'.",
+    `Product: ${brief.name}\nURL: ${brief.url}\nContext: ${brief.description}\nMarket: ${brief.market}\nCompetitor signals: ${brief.competitorSignals.slice(0, 4).join(" · ")}\nTrend signals: ${brief.trendSignals.slice(0, 4).join(" · ")}`,
   );
-  return result?.tribes ?? null;
+  if (!result?.tribes || result.tribes.length !== 7) return null;
+  return result.tribes.map((t) => ({
+    id: t.id,
+    name: t.name,
+    platform: t.platform,
+    profile: `${t.name} — buyers grouped by the same pain.`,
+    mainPain: t.mainPain,
+    buyingTrigger: "A specific moment where the pain becomes unbearable.",
+    topObjection: t.topObjection,
+    priceSensitivity: "medium" as const,
+    languageStyle: "Direct, specific, evidence-driven.",
+    emoji: t.emoji,
+    accent: t.accent,
+  }));
 }
 
 export async function answerInPersona(

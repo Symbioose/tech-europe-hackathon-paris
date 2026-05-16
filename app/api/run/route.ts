@@ -1,16 +1,28 @@
 import { NextResponse } from "next/server";
 import { buildFallbackSession, ouraBrief, tribes, baseAgents, assetsRound1 } from "@/lib/demo-data";
 import { tavilyExtract } from "@/lib/integrations/tavily";
-import { generateTribes, summarizeProduct } from "@/lib/integrations/openai";
+import { generateTribes } from "@/lib/integrations/openai";
 
 export const dynamic = "force-dynamic";
+
+function inferProductName(url: string): string {
+  try {
+    const host = new URL(url).hostname.replace(/^www\./, "");
+    const slug = host.split(".")[0] ?? host;
+    return slug
+      .split(/[-_]/)
+      .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
+      .join(" ");
+  } catch {
+    return "the product";
+  }
+}
 
 export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}));
   const url: string | undefined = body?.productUrl;
 
   if (!url || /ouraring|oura/i.test(url) || process.env.CRUCIBLE_DEMO_MODE === "1") {
-    // Deterministic fallback path — fastest and most reliable for demo recording.
     return NextResponse.json({
       brief: ouraBrief,
       tribes,
@@ -20,38 +32,64 @@ export async function POST(req: Request) {
     });
   }
 
-  // Best-effort live path.
   const fallback = buildFallbackSession();
-  let brief = fallback.brief;
-  try {
-    const snap = await tavilyExtract(url);
-    if (snap) {
-      brief = {
-        ...brief,
-        url,
-        competitorSignals: snap.competitorSignals.length
-          ? snap.competitorSignals
-          : brief.competitorSignals,
-        trendSignals: snap.trendSignals.length ? snap.trendSignals : brief.trendSignals,
-        source: "tavily",
-      };
-    }
-    const summary = await summarizeProduct(url, brief.description);
-    if (summary) {
-      brief = { ...brief, ...summary };
-    }
-    const liveTribes = await generateTribes(brief);
-    if (liveTribes && liveTribes.length === 7) {
-      return NextResponse.json({
-        brief,
-        tribes: liveTribes,
-        initialAssets: assetsRound1, // Keep asset shape stable for demo.
-        agents: baseAgents,
-        mode: "live",
-      });
-    }
-  } catch {
-    // fall through
+  const productName = inferProductName(url);
+
+  // Critical: do NOT inherit the Oura brief fields here — they would bias the
+  // tribe generator toward sleep/recovery regardless of the actual URL.
+  const seedBrief = {
+    name: productName,
+    url,
+    oneLiner: `${productName} — product launch`,
+    description: `Product at ${url}.`,
+    market: "Unknown — infer from URL and Tavily signals",
+    keyPromise: "Infer from the page",
+    competitorSignals: [] as string[],
+    trendSignals: [] as string[],
+    source: "fallback" as "fallback" | "tavily",
+  };
+
+  // Tavily first (provides real context), then OpenAI tribe generation with
+  // that context. Hard ceiling so the demo never stalls.
+  const PRODUCT_TIMEOUT_MS = 28000;
+  const deadline = Date.now() + PRODUCT_TIMEOUT_MS;
+
+  const tavily = await Promise.race([
+    tavilyExtract(url).catch(() => null),
+    new Promise<null>((r) => setTimeout(() => r(null), 8000)),
+  ]);
+
+  let brief = seedBrief;
+  if (tavily) {
+    brief = {
+      ...brief,
+      description:
+        tavily.trendSignals.concat(tavily.competitorSignals).slice(0, 5).join(" · ") ||
+        seedBrief.description,
+      competitorSignals: tavily.competitorSignals.length
+        ? tavily.competitorSignals
+        : brief.competitorSignals,
+      trendSignals: tavily.trendSignals.length
+        ? tavily.trendSignals
+        : brief.trendSignals,
+      source: "tavily",
+    };
+  }
+
+  const remaining = Math.max(2000, deadline - Date.now());
+  const liveTribes = await Promise.race([
+    generateTribes(brief).catch(() => null),
+    new Promise<null>((r) => setTimeout(() => r(null), remaining)),
+  ]);
+
+  if (liveTribes && liveTribes.length === 7) {
+    return NextResponse.json({
+      brief,
+      tribes: liveTribes,
+      initialAssets: assetsRound1,
+      agents: baseAgents,
+      mode: "live",
+    });
   }
 
   return NextResponse.json({

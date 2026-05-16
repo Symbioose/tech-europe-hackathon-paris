@@ -24,38 +24,43 @@ export function TopBar({
   onRun,
   disabled,
   busyLabel,
-  initialUrl = "https://ouraring.com",
+  initialUrl = "https://fal.ai",
   initialPlatform = "auto",
 }: Props) {
   const [url, setUrl] = useState(initialUrl);
   const [platform, setPlatform] = useState<Platform>(initialPlatform);
+  const isBusy = !!busyLabel && busyLabel.toLowerCase().includes("research");
+  const canRun = !disabled;
 
   return (
     <div
-      className="w-full px-6 py-4 border-b border-white/10 backdrop-blur-2xl sticky top-0 z-40"
+      className="relative w-full px-6 py-3.5 border-b border-white/10 sticky top-0 z-40"
       style={{
         background:
-          "linear-gradient(180deg, rgba(10,12,22,0.85), rgba(10,12,22,0.45))",
-        boxShadow: "inset 0 1px 0 rgba(255,255,255,0.05)",
+          "linear-gradient(180deg, rgba(10,12,22,0.92) 0%, rgba(10,12,22,0.62) 100%)",
+        backdropFilter: "blur(20px) saturate(140%)",
+        WebkitBackdropFilter: "blur(20px) saturate(140%)",
+        boxShadow: "inset 0 1px 0 rgba(255,255,255,0.06)",
       }}
     >
-      <div className="flex items-center gap-5">
-        <div className="flex items-center gap-2.5 shrink-0">
-          <div className="relative">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-flame-400 to-flame-700 flex items-center justify-center shadow-glow">
-              <span className="text-ink-950 font-bold text-sm">C</span>
-            </div>
-            <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-plasma shadow-plasma" />
-          </div>
-          <div>
-            <div className="text-sm font-semibold tracking-tight">Crucible</div>
-            <div className="text-[10px] uppercase tracking-[0.2em] text-ink-400 -mt-0.5">
-              Watch the agent learn
-            </div>
-          </div>
+      <div className="flex items-center gap-4">
+        {/* Sober wordmark, no logo badge */}
+        <div className="flex items-baseline gap-2.5 shrink-0">
+          <span className="text-[13px] font-semibold tracking-[0.32em] text-ink-50">
+            CRUCIBLE
+          </span>
+          <span className="text-[9px] uppercase tracking-[0.22em] text-ink-500">
+            Live
+          </span>
+          {isBusy && (
+            <span className="inline-flex items-center gap-1.5 text-[10px] text-flame-300">
+              <span className="w-1.5 h-1.5 rounded-full bg-flame-400 animate-pulse" />
+              researching
+            </span>
+          )}
         </div>
 
-        <div className="h-8 w-px bg-ink-700" />
+        <div className="h-7 w-px bg-white/10" />
 
         <div className="flex-1 flex items-center gap-3 min-w-0">
           <div className="relative flex-1 max-w-[520px]">
@@ -65,24 +70,24 @@ export function TopBar({
               onChange={(e) => setUrl(e.target.value)}
               disabled={disabled}
               placeholder="Paste product URL…"
-              className="w-full px-4 py-2.5 rounded-lg bg-white/[0.06] border border-ink-700 focus:border-flame-500 focus:outline-none text-sm placeholder:text-ink-400 transition-colors disabled:opacity-60"
+              className="w-full px-4 py-2.5 rounded-lg bg-white/[0.05] border border-white/10 focus:border-flame-400/70 focus:bg-white/[0.07] focus:shadow-[0_0_0_4px_rgba(255,122,26,0.10)] focus:outline-none text-[13px] placeholder:text-ink-400 transition-all disabled:opacity-60"
             />
-            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] uppercase tracking-[0.18em] text-ink-400">
+            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[9px] uppercase tracking-[0.22em] text-ink-500">
               URL
             </span>
           </div>
 
-          <div className="flex items-center gap-1 p-1 rounded-lg bg-white/[0.06] border border-ink-700">
+          <div className="flex items-center gap-0.5 p-0.5 rounded-lg bg-white/[0.05] border border-white/10">
             {platforms.map((p) => (
               <button
                 key={p.id}
                 onClick={() => setPlatform(p.id)}
                 disabled={disabled}
                 className={clsx(
-                  "px-2.5 py-1 rounded-md text-xs transition-all",
+                  "px-2.5 py-1 rounded-md text-[11px] transition-all",
                   platform === p.id
-                    ? "bg-ink-700 text-ink-50"
-                    : "text-ink-400 hover:text-ink-50",
+                    ? "bg-white/[0.10] text-ink-50"
+                    : "text-ink-400 hover:text-ink-100",
                 )}
               >
                 {p.label}
@@ -94,16 +99,37 @@ export function TopBar({
         <motion.button
           onClick={() => onRun(url, platform)}
           disabled={disabled}
-          whileTap={{ scale: 0.96 }}
-          className={clsx(
-            "px-5 py-2.5 rounded-lg font-medium text-sm shrink-0 transition-all flex items-center gap-2",
-            disabled
-              ? "bg-ink-700 text-ink-400 cursor-not-allowed"
-              : "bg-gradient-to-r from-flame-400 to-flame-600 text-ink-950 hover:shadow-glow hover:from-flame-300 hover:to-flame-500",
-          )}
+          whileTap={canRun ? { scale: 0.97 } : undefined}
+          whileHover={canRun ? { y: -1 } : undefined}
+          className="relative overflow-hidden px-5 py-2.5 rounded-lg font-semibold text-[13px] shrink-0 transition-colors"
+          style={{
+            background: canRun
+              ? "linear-gradient(95deg, #ffb673 0%, #ff7a1a 35%, #f25b07 65%, #ff7a1a 100%)"
+              : "rgba(255,255,255,0.06)",
+            color: canRun ? "#070811" : "#7c8197",
+            boxShadow: canRun
+              ? "0 8px 24px -6px rgba(255,122,26,0.45), inset 0 1px 0 rgba(255,255,255,0.35)"
+              : "none",
+            cursor: canRun ? "pointer" : "not-allowed",
+          }}
         >
-          {busyLabel ?? "Run Crucible"}
-          {!disabled && <span aria-hidden>↗</span>}
+          {canRun && (
+            <motion.span
+              aria-hidden
+              className="absolute inset-0"
+              style={{
+                background:
+                  "linear-gradient(95deg, transparent, rgba(255,255,255,0.32), transparent)",
+                backgroundSize: "200% 100%",
+              }}
+              animate={{ backgroundPositionX: ["-200%", "200%"] }}
+              transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
+            />
+          )}
+          <span className="relative flex items-center gap-1.5">
+            {busyLabel ?? "Run Crucible"}
+            {canRun && <span aria-hidden>→</span>}
+          </span>
         </motion.button>
       </div>
     </div>

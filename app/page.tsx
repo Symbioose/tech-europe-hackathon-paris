@@ -159,37 +159,13 @@ export default function Page() {
             isWorking={isWorking}
             currentRound={currentRound}
             stageLabel={
-              stage === "idle"
-                ? ""
-                : stage === "researching"
+              stage === "researching"
                 ? "Researching market"
                 : stage === "tribes_ready"
                 ? "Awaiting first launch"
                 : `Round ${currentRound}`
             }
           />
-
-          {stage === "idle" && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-6 z-10">
-              <div className="text-[11px] uppercase tracking-[0.22em] text-ink-400 mb-2">
-                Self-improving launch agent
-              </div>
-              <h1 className="text-4xl font-semibold tracking-tight">
-                One product in. <span className="text-flame-300">One decision out.</span>
-              </h1>
-              <p className="text-ink-300 mt-3 max-w-[520px] leading-relaxed">
-                Crucible builds 7 customer tribes, generates 7 launch campaigns, and runs them
-                through 70 simulated buyers — then learns from failure round after round until you
-                pick a launch decision.
-              </p>
-              <div className="mt-4 flex items-center gap-3 text-[12px] text-ink-400">
-                <Pill>7 tribes</Pill>
-                <Pill>70 buyers</Pill>
-                <Pill>Unlimited rounds</Pill>
-                <Pill highlight>1 launch decision</Pill>
-              </div>
-            </div>
-          )}
         </div>
 
         <RightPanel
@@ -234,30 +210,17 @@ export default function Page() {
 
 function ContextPill({ label, value }: { label: string; value: string }) {
   return (
-    <div className="max-w-[260px] rounded-lg border border-white/10 bg-ink-950/65 px-3 py-1.5 backdrop-blur-md">
-      <span className="text-[9px] uppercase tracking-[0.18em] text-ink-500">{label}</span>
-      <span className="ml-2 text-[11px] text-ink-200">{value}</span>
-    </div>
-  );
-}
-
-function Pill({
-  children,
-  highlight,
-}: {
-  children: React.ReactNode;
-  highlight?: boolean;
-}) {
-  return (
-    <span
-      className={
-        "px-2.5 py-1 rounded-md border " +
-        (highlight
-          ? "border-flame-500/60 bg-flame-900/30 text-flame-200"
-          : "border-ink-700 bg-ink-850 text-ink-300")
-      }
+    <div
+      className="max-w-[260px] rounded-lg border border-white/15 px-3 py-1.5"
+      style={{
+        background: "rgba(10,12,22,0.55)",
+        backdropFilter: "blur(14px) saturate(140%)",
+        WebkitBackdropFilter: "blur(14px) saturate(140%)",
+        boxShadow: "inset 0 1px 0 rgba(255,255,255,0.08)",
+      }}
     >
-      {children}
-    </span>
+      <span className="text-[9px] uppercase tracking-[0.22em] text-ink-500">{label}</span>
+      <span className="ml-2 text-[11px] text-ink-100">{value}</span>
+    </div>
   );
 }

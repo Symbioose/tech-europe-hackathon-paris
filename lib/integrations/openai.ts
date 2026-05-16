@@ -161,6 +161,52 @@ export async function generateAssets(
   }));
 }
 
+export type SimulatedReaction = {
+  tribeId: string;
+  conversionRate: number; // 0..1
+  clickRate: number; // 0..1
+  repelledRate: number; // 0..1
+  topPositiveWords: string[];
+  topObjections: string[];
+  representativeFeedback: string;
+};
+
+export async function simulateTribeReaction(args: {
+  brief: ProductBrief;
+  tribe: Tribe;
+  asset: { hook: string; landingHeadline: string; cta: string };
+  round: 1 | 2 | 3;
+  previousScore?: { conversionRate: number; topObjections: string[] };
+}): Promise<SimulatedReaction | null> {
+  const { brief, tribe, asset, round, previousScore } = args;
+  const roundContext =
+    round === 1
+      ? "Round 1 is the first time this tribe sees ANY campaign for this product. Be cautious — typical first-launch conversion is 3-15%."
+      : round === 2
+        ? `Round 2: the marketer rewrote weak hooks based on what failed in Round 1 (this tribe's previous conversion was ${Math.round((previousScore?.conversionRate ?? 0.09) * 100)}% with objection "${previousScore?.topObjections?.[0] ?? "unclear"}"). Conversion can rise if the new hook genuinely addresses the prior failure — otherwise stays flat. Realistic range: 5-30%.`
+        : `Round 3: the marketer sharpened the winning angle (previous conversion ${Math.round((previousScore?.conversionRate ?? 0.18) * 100)}%). If the hook now names a specific moment matching the tribe's trigger, conversion can hit 25-50%. Otherwise plateaus.`;
+
+  const result = await openaiChat<SimulatedReaction>(
+    `You simulate how a specific buyer tribe reacts to a marketing campaign. Be honest and concrete — do NOT inflate numbers. Return strict JSON: {tribeId, conversionRate (0..1), clickRate (0..1, must be >= conversionRate), repelledRate (0..1, max 0.3), topPositiveWords ([3 short phrases]), topObjections ([2-3 short objections]), representativeFeedback (one direct-quote sentence in the buyer's voice, max 25 words)}. ${roundContext}`,
+    `Product: ${brief.name} — ${brief.keyPromise}\nTribe: ${tribe.name} (id: ${tribe.id})\n  - Main pain: ${tribe.mainPain}\n  - Buying trigger: ${tribe.buyingTrigger}\n  - Top objection: ${tribe.topObjection}\n  - Language style: ${tribe.languageStyle}\n\nCampaign they see now:\n  - Hook: "${asset.hook}"\n  - Landing headline: "${asset.landingHeadline}"\n  - CTA: "${asset.cta}"\n\nReact honestly. Tribes for whom the hook lands hit higher conversion. Tribes for whom the hook is generic or off-target stay low. Output strict JSON only.`,
+  );
+  if (!result) return null;
+  // Defensive clamp + tribeId enforcement
+  const clamp01 = (n: number) => Math.max(0, Math.min(1, Number(n) || 0));
+  return {
+    tribeId: tribe.id,
+    conversionRate: clamp01(result.conversionRate),
+    clickRate: Math.max(clamp01(result.clickRate), clamp01(result.conversionRate)),
+    repelledRate: Math.min(clamp01(result.repelledRate), 0.3),
+    topPositiveWords: Array.isArray(result.topPositiveWords) ? result.topPositiveWords.slice(0, 3) : [],
+    topObjections: Array.isArray(result.topObjections) ? result.topObjections.slice(0, 3) : [tribe.topObjection],
+    representativeFeedback:
+      typeof result.representativeFeedback === "string" && result.representativeFeedback
+        ? result.representativeFeedback
+        : `${tribe.name} reacted but didn't say much.`,
+  };
+}
+
 export async function rewriteHook(args: {
   productName: string;
   tribe: Tribe;

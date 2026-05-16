@@ -1,73 +1,109 @@
 import { NextResponse } from "next/server";
 import { applyRoundState, assetsByRound, baseAgents } from "@/lib/demo-data";
-import type { LaunchAsset, ProductBrief, RegenerationTarget, RoundResult, Tribe } from "@/lib/types";
+import { simulateTribeReaction, type SimulatedReaction } from "@/lib/integrations/openai";
+import type {
+  AgentState,
+  BuyerAgent,
+  LaunchAsset,
+  ProductBrief,
+  RegenerationTarget,
+  RoundResult,
+  Tribe,
+  TribeScore,
+} from "@/lib/types";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
-const roundStrategy = {
+const roundNarrative = {
   1: {
     learning: "Broad exploration found which pains buyers understood immediately and which claims felt too generic.",
-    highlights: ["Specific pain language drove the first clicks", "Tribes with urgent daily symptoms reacted fastest"],
-    failures: ["Generic optimization claims underperformed", "Broad wellness language created weak intent"],
   },
   2: {
     learning: "The marketer rewrote weak hooks around concrete moments, then shifted attention toward tribes with clearer buying triggers.",
-    highlights: ["Moment-based hooks improved curiosity", "Objection-aware landing copy reduced drop-off"],
-    failures: ["Feature-heavy scripts still lost non-technical buyers", "Some tribes needed proof before CTA"],
   },
   3: {
     learning: "The final round narrowed on the strongest tribe, repeated its exact trigger, and removed the main objection from the path to conversion.",
-    highlights: ["The winning hook named a recognizable moment", "CTA clarity converted the highest-intent buyers"],
-    failures: ["Low-urgency tribes stayed curious but did not convert", "Price-sensitive buyers needed more proof"],
   },
-} satisfies Record<1 | 2 | 3, Pick<RoundResult, "learning" | "highlights" | "failures">>;
-
-function hash(input: string): number {
-  let value = 0;
-  for (let i = 0; i < input.length; i++) {
-    value = (value * 31 + input.charCodeAt(i)) >>> 0;
-  }
-  return value;
-}
+} satisfies Record<1 | 2 | 3, Pick<RoundResult, "learning">>;
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
 }
 
-function scoreTribes(tribes: Tribe[], round: 1 | 2 | 3) {
-  const baseByRound = { 1: 0.09, 2: 0.18, 3: 0.31 };
-  const ranked = tribes
-    .map((tribe, index) => {
-      const seed = hash(`${tribe.name}-${tribe.mainPain}-${round}`);
-      const fit = ((seed % 17) - 8) / 100;
-      const focusBoost = round === 3 && index === 1 ? 0.12 : round >= 2 && index === 1 ? 0.06 : 0;
-      const conversionRate = clamp(baseByRound[round] + fit + focusBoost - index * 0.006, 0.03, 0.48);
-      return {
-        tribeId: tribe.id,
-        conversionRate,
-        clickRate: clamp(conversionRate + 0.17 + (seed % 5) / 100, conversionRate, 0.72),
-        repelledRate: clamp(0.19 - conversionRate * 0.22 + (index % 3) / 100, 0.04, 0.24),
-        topPositiveWords: [
-          tribe.buyingTrigger.split(" ").slice(0, 3).join(" "),
-          tribe.languageStyle.split(" ").slice(0, 2).join(" "),
-        ].filter(Boolean),
-        topObjections: [tribe.topObjection],
-        representativeFeedback:
-          round === 1
-            ? `The promise is interesting, but ${tribe.name.toLowerCase()} need a sharper reason to act now.`
-            : round === 2
-              ? `The rewrite is closer because it speaks to ${tribe.mainPain.toLowerCase()}.`
-              : `This worked when the hook matched their trigger: ${tribe.buyingTrigger.toLowerCase()}.`,
-      };
-    })
-    .sort((a, b) => b.conversionRate - a.conversionRate);
+function distributeStates(
+  agentsForTribe: BuyerAgent[],
+  score: TribeScore,
+): BuyerAgent[] {
+  // Allocate 10 buyer states based on the live conversion / repelled / click rates.
+  // Order: converted first (top of pool), then repelled (bottom of pool), then curious, then seen, rest idle.
+  const n = agentsForTribe.length || 10;
+  const converted = Math.round(clamp(score.conversionRate, 0, 1) * n);
+  const repelled = Math.round(clamp(score.repelledRate, 0, 1) * n);
+  // Click-but-didn't-buy = curious. Pull from the click delta.
+  const curious = Math.max(0, Math.round((clamp(score.clickRate, 0, 1) - clamp(score.conversionRate, 0, 1)) * n));
+  const remaining = Math.max(0, n - converted - repelled - curious);
+  const seen = Math.min(remaining, Math.round(remaining * 0.6));
+  const idle = Math.max(0, remaining - seen);
 
-  return ranked;
+  const sequence: AgentState[] = [
+    ...Array<AgentState>(converted).fill("converted"),
+    ...Array<AgentState>(curious).fill("curious"),
+    ...Array<AgentState>(seen).fill("seen"),
+    ...Array<AgentState>(repelled).fill("repelled"),
+    ...Array<AgentState>(idle).fill("idle"),
+  ].slice(0, n);
+
+  // Hero buyer stays converted whenever possible — it's the anchor for the voice demo.
+  const heroIdx = agentsForTribe.findIndex((a) => a.isHero);
+  if (heroIdx >= 0) {
+    // Move a converted to hero position
+    const firstConvertedIdx = sequence.findIndex((s) => s === "converted");
+    if (firstConvertedIdx >= 0 && firstConvertedIdx !== heroIdx) {
+      [sequence[heroIdx], sequence[firstConvertedIdx]] = [sequence[firstConvertedIdx], sequence[heroIdx]];
+    } else if (firstConvertedIdx < 0) {
+      // Force at least one converted for the hero
+      sequence[heroIdx] = "converted";
+    }
+  }
+
+  return agentsForTribe.map((agent, idx) => ({
+    ...agent,
+    state: sequence[idx] ?? "idle",
+    feedback: idx === heroIdx ? score.representativeFeedback : agent.feedback,
+  }));
 }
 
 function pickAssets(round: 1 | 2 | 3, incoming?: LaunchAsset[]) {
   if (incoming?.length) return incoming;
   return assetsByRound[round];
+}
+
+function reactionToScore(reaction: SimulatedReaction): TribeScore {
+  return {
+    tribeId: reaction.tribeId,
+    conversionRate: reaction.conversionRate,
+    clickRate: reaction.clickRate,
+    repelledRate: reaction.repelledRate,
+    topPositiveWords: reaction.topPositiveWords,
+    topObjections: reaction.topObjections,
+    representativeFeedback: reaction.representativeFeedback,
+  };
+}
+
+function fallbackScore(tribe: Tribe, round: 1 | 2 | 3, index: number): TribeScore {
+  const baseByRound = { 1: 0.09, 2: 0.18, 3: 0.31 };
+  const fit = ((tribe.id.charCodeAt(tribe.id.length - 1) * 7) % 17 - 8) / 100;
+  const conversionRate = clamp(baseByRound[round] + fit - index * 0.006, 0.03, 0.48);
+  return {
+    tribeId: tribe.id,
+    conversionRate,
+    clickRate: clamp(conversionRate + 0.17, conversionRate, 0.72),
+    repelledRate: clamp(0.19 - conversionRate * 0.22, 0.04, 0.24),
+    topPositiveWords: [tribe.buyingTrigger.split(" ").slice(0, 3).join(" ")],
+    topObjections: [tribe.topObjection],
+    representativeFeedback: `${tribe.name} need a sharper reason to act on this hook.`,
+  };
 }
 
 export async function POST(req: Request) {
@@ -76,6 +112,7 @@ export async function POST(req: Request) {
     brief?: ProductBrief;
     tribes?: Tribe[];
     assets?: LaunchAsset[];
+    previousRounds?: RoundResult[];
   };
   const round = (body?.round ?? 1) as 1 | 2 | 3;
   if (![1, 2, 3].includes(round)) {
@@ -83,35 +120,110 @@ export async function POST(req: Request) {
   }
 
   const tribes = Array.isArray(body.tribes) && body.tribes.length === 7 ? body.tribes : [];
-  const tribeScores = tribes.length ? scoreTribes(tribes, round) : [];
-  const overallConversion = tribeScores.length
-    ? tribeScores.reduce((sum, score) => sum + score.conversionRate, 0) / tribeScores.length
-    : { 1: 0.09, 2: 0.18, 3: 0.31 }[round];
-  const updatedAgents = applyRoundState(round, baseAgents);
   const updatedAssets = pickAssets(round, body.assets);
 
+  if (tribes.length !== 7) {
+    // No live data → return deterministic fallback so the UI doesn't break.
+    const fallbackScores: TribeScore[] = tribes.map((t, i) => fallbackScore(t, round, i));
+    const result: RoundResult = {
+      round,
+      overallConversion: { 1: 0.09, 2: 0.18, 3: 0.31 }[round],
+      learning: roundNarrative[round].learning,
+      highlights: [],
+      failures: [],
+      assets: updatedAssets,
+      tribeScores: fallbackScores,
+    };
+    return NextResponse.json({
+      roundResult: result,
+      updatedAssets,
+      updatedAgents: applyRoundState(round, baseAgents),
+      mode: "no-tribes",
+    });
+  }
+
+  // Build a lookup for previous round's per-tribe scores (used to give round 2/3 context).
+  const prevRound = (body.previousRounds ?? []).find((r) => r.round === (round - 1));
+  const prevScoreByTribe = new Map(
+    (prevRound?.tribeScores ?? []).map((s) => [s.tribeId, s]),
+  );
+
+  // Fire 7 parallel real simulations.
+  const reactions: Array<SimulatedReaction | null> = await Promise.all(
+    tribes.map((tribe) => {
+      const asset =
+        updatedAssets.find((a) => a.tribeId === tribe.id) ??
+        updatedAssets[0] ?? { hook: "", landingHeadline: "", cta: "" };
+      const prev = prevScoreByTribe.get(tribe.id);
+      return Promise.race([
+        simulateTribeReaction({
+          brief: body.brief ?? ({} as ProductBrief),
+          tribe,
+          asset: { hook: asset.hook, landingHeadline: asset.landingHeadline, cta: asset.cta },
+          round,
+          previousScore: prev
+            ? { conversionRate: prev.conversionRate, topObjections: prev.topObjections }
+            : undefined,
+        }),
+        new Promise<null>((r) => setTimeout(() => r(null), 12000)),
+      ]).catch(() => null);
+    }),
+  );
+
+  const tribeScores: TribeScore[] = tribes.map((tribe, i) => {
+    const reaction = reactions[i];
+    return reaction ? reactionToScore(reaction) : fallbackScore(tribe, round, i);
+  });
+
+  // Build live agents: take the existing 70 buyers, regroup by tribe, distribute states by score.
+  const baseByTribe = new Map<string, BuyerAgent[]>();
+  for (const a of baseAgents) {
+    const list = baseByTribe.get(a.tribeId) ?? [];
+    list.push(a);
+    baseByTribe.set(a.tribeId, list);
+  }
+  const updatedAgents: BuyerAgent[] = tribes.flatMap((tribe) => {
+    const pool = baseByTribe.get(tribe.id) ?? [];
+    const score = tribeScores.find((s) => s.tribeId === tribe.id);
+    if (!pool.length || !score) return pool;
+    return distributeStates(pool, score);
+  });
+
+  // Sort tribeScores DESC by conversion (winner-first ordering everywhere)
+  const sortedDesc = [...tribeScores].sort((a, b) => b.conversionRate - a.conversionRate);
   const sortedAsc = [...tribeScores].sort((a, b) => a.conversionRate - b.conversionRate);
+
+  const overallConversion =
+    tribeScores.reduce((sum, s) => sum + s.conversionRate, 0) / tribeScores.length;
+
+  // Round 1 → mark the bottom 2 for visible regen at the start of Round 2.
   const regenerationTargets: RegenerationTarget[] | undefined =
     round === 1
-      ? sortedAsc.slice(0, 2).map((s) => {
-          const previousHook =
-            body.assets?.find((a) => a.tribeId === s.tribeId)?.hook ??
-            updatedAssets.find((a) => a.tribeId === s.tribeId)?.hook ??
-            "";
-          return {
-            tribeId: s.tribeId,
-            previousHook,
-            failureReason: s.representativeFeedback ?? "Buyers did not react clearly.",
-          };
-        })
+      ? sortedAsc.slice(0, 2).map((s) => ({
+          tribeId: s.tribeId,
+          previousHook: updatedAssets.find((a) => a.tribeId === s.tribeId)?.hook ?? "",
+          failureReason: s.representativeFeedback || s.topObjections[0] || "Buyers did not react clearly.",
+        }))
       : undefined;
+
+  // Highlights & failures derived from the LIVE reactions (no hardcoded copy).
+  const highlights = sortedDesc.slice(0, 2).map((s) => {
+    const tribe = tribes.find((t) => t.id === s.tribeId);
+    return `${tribe?.name ?? s.tribeId} converted ${Math.round(s.conversionRate * 100)}%: "${s.representativeFeedback.slice(0, 90)}"`;
+  });
+  const failures = sortedAsc.slice(0, 2).map((s) => {
+    const tribe = tribes.find((t) => t.id === s.tribeId);
+    return `${tribe?.name ?? s.tribeId} only ${Math.round(s.conversionRate * 100)}%: ${s.topObjections[0] ?? "no clear objection"}`;
+  });
 
   const roundResult: RoundResult = {
     round,
     overallConversion,
-    ...roundStrategy[round],
+    learning: roundNarrative[round].learning,
+    highlights,
+    failures,
     assets: updatedAssets,
-    tribeScores,
+    tribeScores: sortedDesc,
     regenerationTargets,
   };
 
@@ -119,6 +231,6 @@ export async function POST(req: Request) {
     roundResult,
     updatedAssets,
     updatedAgents,
-    mode: "fallback",
+    mode: reactions.every((r) => r !== null) ? "live" : "partial",
   });
 }

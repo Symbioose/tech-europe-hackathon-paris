@@ -34,23 +34,28 @@ export function RecommendationFourBlocks({
       )}
 
       <Block
-        label="Who to target"
+        label="Best population to target first"
         value={winningTribe?.name ?? recommendation.winningTribeId}
         detail={winningTribe?.profile ?? ""}
       />
       <Block
-        label="What to say"
+        label="Winning message"
         value={recommendation.winningHook}
         detail={recommendation.whyItWon}
       />
       <Block
-        label="Where to send them"
+        label="Landing page / CTA"
         value={recommendation.landingHeadline}
         detail={`CTA: ${recommendation.cta}`}
       />
       <Block
-        label="What objection to avoid"
+        label="Main objection to avoid"
         value={recommendation.objectionToAvoid}
+        detail=""
+      />
+      <Block
+        label="Next action"
+        value={recommendation.nextAction}
         detail=""
       />
     </div>

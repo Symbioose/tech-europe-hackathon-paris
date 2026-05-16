@@ -123,12 +123,22 @@ export function TribePlaybook({ tribes, scores, breakdown, agents, onAskBuyer }:
               {score && (
                 <div className="grid grid-cols-3 gap-2 text-[10px]">
                   <Stat label="Converted" value={`${Math.round(score.conversionRate * 100)}%`} color="#3affe9" />
-                  <Stat label="Curious" value={`${Math.round(score.clickRate * 100)}%`} color="#ffcf6b" />
+                  <Stat
+                    label="Curious"
+                    value={`${Math.round(Math.max(0, score.clickRate - score.conversionRate) * 100)}%`}
+                    color="#ffcf6b"
+                  />
                   <Stat label="Repelled" value={`${Math.round(score.repelledRate * 100)}%`} color="#ff5470" />
                 </div>
               )}
 
               {/* Justification */}
+              <div className="text-[10px] uppercase tracking-[0.16em] text-ink-400">
+                Target this population?{" "}
+                <span style={{ color: style.text }} className="font-semibold">
+                  {rec.verdict === "strong" ? "Yes" : rec.verdict === "refine" ? "Maybe" : "Not yet"}
+                </span>
+              </div>
               <p className="text-[12px] leading-snug text-ink-200">{rec.justification}</p>
 
               <Divider />

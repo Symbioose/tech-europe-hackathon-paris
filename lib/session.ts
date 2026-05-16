@@ -1,7 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { AppStage, Recommendation, Session } from "./types";
+import type {
+  AppStage,
+  LaunchAsset,
+  Recommendation,
+  Session,
+  TribeRecommendation,
+  TribeScore,
+  TribeVerdict,
+} from "./types";
 import type { LaunchSetupValues } from "@/components/LaunchSetup";
 import type { TavilyResult } from "@/lib/integrations/tavily";
 import {
@@ -148,15 +156,128 @@ function buildLiveFeed(
   return messages;
 }
 
+function verdictForScore(score?: TribeScore): TribeVerdict {
+  const conversionRate = score?.conversionRate ?? 0;
+  if (conversionRate >= 0.25) return "strong";
+  if (conversionRate >= 0.12) return "refine";
+  return "avoid";
+}
+
+function priorityForVerdict(verdict: TribeVerdict): "High" | "Medium" | "Low" {
+  if (verdict === "strong") return "High";
+  if (verdict === "refine") return "Medium";
+  return "Low";
+}
+
+function channelForTribe(tribe: Tribe): string {
+  const text = `${tribe.name} ${tribe.profile} ${tribe.languageStyle}`.toLowerCase();
+  if (text.includes("dev") || text.includes("engineer") || text.includes("api")) {
+    return "Dev communities, GitHub examples, technical LinkedIn";
+  }
+  if (text.includes("agency") || text.includes("creative")) {
+    return "LinkedIn outbound, agency newsletters, founder-led demos";
+  }
+  if (text.includes("founder") || text.includes("exec") || text.includes("b2b")) {
+    return "Founder communities, LinkedIn, warm intro campaigns";
+  }
+  if (tribe.platform === "tiktok") return "Short demo videos, creator partnerships";
+  if (tribe.platform === "instagram") return "Visual proof, reels, community posts";
+  return "LinkedIn, niche newsletters, founder communities";
+}
+
+function proofForTribe(tribe: Tribe): string {
+  const text = `${tribe.name} ${tribe.topObjection} ${tribe.mainPain}`.toLowerCase();
+  if (text.includes("api") || text.includes("latency") || text.includes("engineer")) {
+    return "API docs, latency benchmark, reliability numbers";
+  }
+  if (text.includes("price") || text.includes("cost") || text.includes("roi")) {
+    return "Pricing clarity, ROI example, before/after output volume";
+  }
+  if (text.includes("security") || text.includes("enterprise")) {
+    return "Security posture, case study, implementation checklist";
+  }
+  return "30-second demo, customer quote, concrete output examples";
+}
+
+function buildTribeBreakdown(
+  tribes: Tribe[],
+  assets: LaunchAsset[],
+  scores: TribeScore[],
+): TribeRecommendation[] {
+  const scoreById = new Map(scores.map((score) => [score.tribeId, score]));
+
+  return tribes.map((tribe) => {
+    const score = scoreById.get(tribe.id);
+    const asset = assets.find((item) => item.tribeId === tribe.id);
+    const verdict = verdictForScore(score);
+    const conversionPct = Math.round((score?.conversionRate ?? 0) * 100);
+    const curiousPct = Math.round(
+      Math.max(0, (score?.clickRate ?? 0) - (score?.conversionRate ?? 0)) * 100,
+    );
+    const repelledPct = Math.round((score?.repelledRate ?? 0) * 100);
+    const objection = score?.topObjections?.[0] || tribe.topObjection;
+    const hook = asset?.hook || `Solve ${tribe.mainPain}`;
+    const positiveWords = score?.topPositiveWords?.slice(0, 2).join(", ");
+
+    const justification =
+      verdict === "strong"
+        ? `${conversionPct}% converted and ${curiousPct}% stayed curious. This is the clearest first-wave target.`
+        : verdict === "refine"
+          ? `${conversionPct}% converted, ${curiousPct}% stayed curious, and ${repelledPct}% were repelled. The audience is real, but the message needs sharper proof.`
+          : `${conversionPct}% converted while ${repelledPct}% were repelled. Do not lead the launch with this population yet.`;
+
+    return {
+      tribeId: tribe.id,
+      verdict,
+      priority: priorityForVerdict(verdict),
+      justification,
+      whyReacted:
+        score?.representativeFeedback ||
+        `${tribe.name} judged the offer through the pain of ${tribe.mainPain}.`,
+      whatMotivates:
+        positiveWords ||
+        tribe.buyingTrigger ||
+        `A message that names ${tribe.mainPain} in a concrete moment.`,
+      whatBlocks: objection,
+      recommendedChannel: channelForTribe(tribe),
+      recommendedAngle:
+        verdict === "strong"
+          ? `Lead with the moment behind "${hook}" and make the payoff feel immediate.`
+          : `Reframe the hook around ${tribe.mainPain} and address "${objection}" earlier.`,
+      proofToShow: proofForTribe(tribe),
+      recommendedCta: asset?.cta || "See it live",
+      whatToAvoid: `Avoid broad claims that trigger this objection: ${objection}.`,
+      improvedHook:
+        verdict === "strong"
+          ? hook
+          : `${tribe.mainPain.split(".")[0].slice(0, 64)} — solved without the usual friction`,
+      improvedCta:
+        verdict === "strong"
+          ? asset?.cta || "Try it now"
+          : "Show me proof",
+      objectionToHandle: objection,
+      suggestedQuestions: [
+        `What exact part of "${hook}" made you react?`,
+        `What proof would make this feel safe to try?`,
+        `How would you describe this problem in your own words?`,
+      ],
+    };
+  });
+}
+
 function buildRecommendation(session: Session): Recommendation {
   // Pick the winner from the most recent round's tribeScores (sorted DESC by conversionRate).
   // Fall back to the Oura demo recommendation when live data is missing.
   const lastRound = [...session.rounds].sort((a, b) => b.round - a.round)[0];
-  const winnerScore = lastRound?.tribeScores?.[0];
+  const rankedScores = [...(lastRound?.tribeScores ?? [])].sort(
+    (a, b) => b.conversionRate - a.conversionRate,
+  );
+  const winnerScore = rankedScores[0];
   if (!winnerScore) return fallbackRecommendation;
   const winningTribe = session.tribes.find((t) => t.id === winnerScore.tribeId);
   const winningAsset = session.assets.find((a) => a.tribeId === winnerScore.tribeId);
   if (!winningTribe || !winningAsset) return fallbackRecommendation;
+  const tribeBreakdown = buildTribeBreakdown(session.tribes, session.assets, rankedScores);
   return {
     winningTribeId: winnerScore.tribeId,
     winningHook: winningAsset.hook,
@@ -164,8 +285,9 @@ function buildRecommendation(session: Session): Recommendation {
     cta: winningAsset.cta,
     objectionToAvoid: winningTribe.topObjection,
     whyItWon: winnerScore.representativeFeedback,
-    nextAction: `Lead the launch with this hook on the platform best matching ${winningTribe.platform}. Skip the runner-up tribes for the first wave.`,
+    nextAction: `Target ${winningTribe.name} first. Run the next launch wave on ${channelForTribe(winningTribe)} with proof around ${proofForTribe(winningTribe).toLowerCase()}.`,
     ranker: "deterministic",
+    tribeBreakdown,
   };
 }
 

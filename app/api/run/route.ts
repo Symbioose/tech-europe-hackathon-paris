@@ -1,6 +1,6 @@
 import { ouraBrief, tribes, baseAgents, assetsRound1 } from "@/lib/demo-data";
 import { extractPage, searchCompetitors, searchTrends } from "@/lib/integrations/tavily";
-import { summarizeProduct, generateTribes } from "@/lib/integrations/openai";
+import { summarizeProduct, generateTribes, generateAssets } from "@/lib/integrations/openai";
 import type { TavilyResult } from "@/lib/integrations/tavily";
 import type { ProductBrief } from "@/lib/types";
 
@@ -146,8 +146,41 @@ export async function POST(req: Request) {
         if (liveTribes && liveTribes.length === 7) {
           emit("tribes:all", liveTribes);
           emit("agents", baseAgents);
-          emit("initialAssets", assetsRound1);
-          emit("done", { mode: "live" });
+
+          // ── Step 5: generate live assets per tribe (so FAL images use live hooks, not Oura) ──
+          const liveAssets = await race(
+            generateAssets(briefWithSignals, liveTribes, {
+              testType: body.testType,
+              productNote: body.productNote,
+              targetMarket: body.targetMarket,
+              assetMode: body.assetMode,
+            }),
+            18000,
+          );
+
+          if (liveAssets && liveAssets.length === 7) {
+            // Merge live asset fields onto the assetsRound1 shape (preserves any defaults)
+            const merged = liveTribes.map((tribe) => {
+              const live = liveAssets.find((a) => a.tribeId === tribe.id);
+              const fallback = assetsRound1.find((a) => a.tribeId === tribe.id) ?? assetsRound1[0];
+              if (!live) return { ...fallback, tribeId: tribe.id };
+              return {
+                tribeId: tribe.id,
+                hook: live.hook,
+                landingHeadline: live.landingHeadline,
+                cta: live.cta,
+                videoScript: live.videoScript,
+                benefits: live.benefits,
+                dmReply: live.dmReply,
+              };
+            });
+            emit("initialAssets", merged);
+            emit("done", { mode: "live" });
+          } else {
+            // Live tribes but fallback assets — better than nothing
+            emit("initialAssets", assetsRound1);
+            emit("done", { mode: "live-tribes-fallback-assets" });
+          }
         } else {
           emit("tribes:all", tribes);
           emit("agents", baseAgents);

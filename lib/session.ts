@@ -498,40 +498,71 @@ export function useSession() {
       ? apiResult.updatedAssets
       : assetsByRound[round].map((a) => ({ ...a }));
     const roundResult = apiResult?.roundResult ?? roundResults[round - 1];
-    const updatedAgents = Array.isArray(apiResult?.updatedAgents)
+    const finalAgents = Array.isArray(apiResult?.updatedAgents)
       ? apiResult.updatedAgents
       : applyRoundState(
           round,
           snapshot?.agents?.length === 70 ? snapshot.agents : baseAgents,
         );
 
+    // Commit assets, stage, and round result immediately so the right panel updates.
     setView((v) => ({
       ...v,
       session: {
         ...v.session,
         assets: updatedAssets,
+        rounds: [...v.session.rounds.filter((r) => r.round !== round), roundResult].sort(
+          (a, b) => a.round - b.round,
+        ),
       },
+      currentRound: round,
+      stage: round === 1 ? "round_1" : round === 2 ? "round_2" : "round_3",
     }));
 
-    await delay(350);
-    setView((v) => {
-      const roundFeed = feedByRound[round] ?? [];
-      return {
-        ...v,
-        session: {
-          ...v.session,
-          agents: updatedAgents,
-          rounds: [...v.session.rounds.filter((r) => r.round !== round), roundResult].sort(
-            (a, b) => a.round - b.round,
-          ),
-        },
-        currentRound: round,
-        stage: round === 1 ? "round_1" : round === 2 ? "round_2" : "round_3",
-        feed: [...v.feed, ...roundFeed],
-      };
-    });
+    // Stagger the 70 agent state transitions to make the simulation feel alive.
+    // ~25 ms per agent × 70 = ~1.75 s of rolling visible reactions in the 3D market.
+    // Buyers reveal in a randomized order (not strictly sequential by id) so the wave
+    // looks organic rather than sweeping left-to-right.
+    const revealOrder = finalAgents.map((_: unknown, i: number) => i);
+    for (let i = revealOrder.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [revealOrder[i], revealOrder[j]] = [revealOrder[j], revealOrder[i]];
+    }
 
-    await delay(950);
+    const roundFeed = feedByRound[round] ?? [];
+    const totalReveals = revealOrder.length;
+    // Drip a feed message roughly every 1/N of the way through the reveal.
+    const feedDripStep = roundFeed.length > 0 ? Math.max(1, Math.floor(totalReveals / roundFeed.length)) : Infinity;
+    let feedDripIndex = 0;
+
+    for (let step = 0; step < totalReveals; step++) {
+      const agentIdx = revealOrder[step];
+      const newState = finalAgents[agentIdx];
+      const shouldDripFeed =
+        feedDripIndex < roundFeed.length && step > 0 && step % feedDripStep === 0;
+
+      setView((v) => {
+        const nextAgents = v.session.agents.map((a, idx) => (idx === agentIdx ? newState : a));
+        const nextFeed = shouldDripFeed
+          ? [...v.feed, roundFeed[feedDripIndex]]
+          : v.feed;
+        return {
+          ...v,
+          session: { ...v.session, agents: nextAgents },
+          feed: nextFeed,
+        };
+      });
+
+      if (shouldDripFeed) feedDripIndex++;
+      await delay(25);
+    }
+
+    // Drain any remaining feed messages
+    if (feedDripIndex < roundFeed.length) {
+      setView((v) => ({ ...v, feed: [...v.feed, ...roundFeed.slice(feedDripIndex)] }));
+    }
+
+    await delay(400);
     setView((v) => ({ ...v, isWorking: false }));
 
     if (round === 3) {

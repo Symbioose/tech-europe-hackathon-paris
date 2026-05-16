@@ -112,6 +112,55 @@ export async function answerInPersona(
   );
 }
 
+export async function generateAssets(
+  brief: ProductBrief,
+  tribes: Tribe[],
+  setup: TribeGenSetup = {},
+): Promise<Array<{
+  tribeId: string;
+  hook: string;
+  landingHeadline: string;
+  cta: string;
+  videoScript: string;
+  benefits: string[];
+  dmReply: string;
+}> | null> {
+  const focus = setup.testType
+    ? `The founder is testing: ${setup.testType.replace(/_/g, " ")}.`
+    : "";
+  const tribesPayload = tribes
+    .map(
+      (t) =>
+        `${t.id}: "${t.name}" — pain: ${t.mainPain}; objection: ${t.topObjection}`,
+    )
+    .join("\n");
+
+  const result = await openaiChat<{
+    assets: Array<{
+      tribeId: string;
+      hook: string;
+      landingHeadline: string;
+      cta: string;
+      videoScript: string;
+      benefit: string;
+      dmReply: string;
+    }>;
+  }>(
+    `You write launch assets for a product. ${focus} Return strict JSON: {assets:[7 items]}. Each item: {tribeId (must match input id exactly), hook (one specific moment, max 12 words, no generic claims), landingHeadline (max 16 words, names the moment + the relief), cta (3-5 words, action verb), videoScript (one sentence visualising the opening shot), benefit (one concrete promise), dmReply (one short reply to a curious DM)}. Hooks MUST be tailored to each tribe's pain and trigger — no generic 'optimize your X'.`,
+    `Product: ${brief.name}\nKey promise: ${brief.keyPromise}\nMarket: ${brief.market}\nNote: ${setup.productNote ?? ""}\n\nTribes:\n${tribesPayload}`,
+  );
+  if (!result?.assets || result.assets.length !== 7) return null;
+  return result.assets.map((a) => ({
+    tribeId: a.tribeId,
+    hook: a.hook,
+    landingHeadline: a.landingHeadline,
+    cta: a.cta,
+    videoScript: a.videoScript,
+    benefits: [a.benefit].filter(Boolean),
+    dmReply: a.dmReply,
+  }));
+}
+
 export async function rewriteHook(args: {
   productName: string;
   tribe: Tribe;

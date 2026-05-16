@@ -45,6 +45,7 @@ export default function Page() {
     isWorking,
     signals,
     feed,
+    tavily,
   } = view;
 
   useEffect(() => {
@@ -197,6 +198,7 @@ export default function Page() {
           isWorking={isWorking}
           onAdvance={handleAdvance}
           onReset={actions.reset}
+          tavily={tavily}
         />
       </main>
 

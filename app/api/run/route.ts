@@ -1,9 +1,12 @@
-import { NextResponse } from "next/server";
-import { buildFallbackSession, ouraBrief, tribes, baseAgents, assetsRound1 } from "@/lib/demo-data";
-import { tavilyExtract } from "@/lib/integrations/tavily";
-import { generateTribes } from "@/lib/integrations/openai";
+import { ouraBrief, tribes, baseAgents, assetsRound1 } from "@/lib/demo-data";
+import { extractPage, searchCompetitors, searchTrends } from "@/lib/integrations/tavily";
+import { summarizeProduct, generateTribes } from "@/lib/integrations/openai";
+import type { TavilyResult } from "@/lib/integrations/tavily";
+import type { ProductBrief } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+export const maxDuration = 60;
 
 function inferProductName(url: string): string {
   try {
@@ -18,6 +21,13 @@ function inferProductName(url: string): string {
   }
 }
 
+function race<T>(promise: Promise<T>, ms: number): Promise<T | null> {
+  return Promise.race([
+    promise.catch(() => null),
+    new Promise<null>((r) => setTimeout(() => r(null), ms)),
+  ]);
+}
+
 export async function POST(req: Request) {
   const body = (await req.json().catch(() => ({}))) as {
     productUrl?: string;
@@ -29,100 +39,138 @@ export async function POST(req: Request) {
   };
   const url: string | undefined = body?.productUrl;
 
-  if (!url || /ouraring|oura/i.test(url) || process.env.CRUCIBLE_DEMO_MODE === "1") {
-    return NextResponse.json({
-      brief: ouraBrief,
-      tribes,
-      initialAssets: assetsRound1,
-      agents: baseAgents,
-      mode: "fallback",
-    });
-  }
+  const encoder = new TextEncoder();
 
-  const fallback = buildFallbackSession();
-  const productName = inferProductName(url);
+  const stream = new ReadableStream({
+    async start(controller) {
+      function emit(event: string, data: unknown) {
+        const line = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+        controller.enqueue(encoder.encode(line));
+      }
 
-  // Critical: do NOT inherit the Oura brief fields here — they would bias the
-  // tribe generator toward sleep/recovery regardless of the actual URL.
-  const seedBrief = {
-    name: productName,
-    url,
-    oneLiner: `${productName} — product launch`,
-    description: `Product at ${url}.`,
-    market: "Unknown — infer from URL and Tavily signals",
-    keyPromise: "Infer from the page",
-    competitorSignals: [] as string[],
-    trendSignals: [] as string[],
-    source: "fallback" as "fallback" | "tavily",
-  };
+      try {
+        // ── Oura / demo fast-path ────────────────────────────────────────────
+        if (!url || /ouraring|oura/i.test(url) || process.env.CRUCIBLE_DEMO_MODE === "1") {
+          const stubProduct: TavilyResult[] = [
+            {
+              title: "Oura Ring — Smart Health Ring",
+              url: "https://ouraring.com",
+              snippet:
+                "Oura Ring tracks sleep, readiness, and activity 24/7. Worn on your finger, it's the most accurate wearable health monitor.",
+              favicon: "https://www.google.com/s2/favicons?domain=ouraring.com&sz=32",
+            },
+          ];
+          emit("tavily:product", stubProduct);
+          emit("brief", ouraBrief);
+          emit("tavily:competitors", []);
+          emit("tavily:trends", []);
+          emit("tribes:all", tribes);
+          emit("agents", baseAgents);
+          emit("initialAssets", assetsRound1);
+          emit("done", { mode: "fallback" });
+          controller.close();
+          return;
+        }
 
-  // Tavily first (provides real context), then OpenAI tribe generation with
-  // that context. Hard ceiling so the demo never stalls.
-  const PRODUCT_TIMEOUT_MS = 28000;
-  const deadline = Date.now() + PRODUCT_TIMEOUT_MS;
+        // ── Step 1: extractPage ──────────────────────────────────────────────
+        const productResults = await race(extractPage(url), 8000);
+        emit("tavily:product", productResults ?? []);
 
-  const tavily = await Promise.race([
-    tavilyExtract(url).catch(() => null),
-    new Promise<null>((r) => setTimeout(() => r(null), 8000)),
-  ]);
+        const productName = inferProductName(url);
+        const rawSnippet = productResults?.[0]?.snippet ?? "";
 
-  let brief = seedBrief;
-  if (tavily) {
-    brief = {
-      ...brief,
-      description:
-        tavily.trendSignals.concat(tavily.competitorSignals).slice(0, 5).join(" · ") ||
-        seedBrief.description,
-      market: body.targetMarket || brief.market,
-      competitorSignals: tavily.competitorSignals.length
-        ? tavily.competitorSignals
-        : brief.competitorSignals,
-      trendSignals: tavily.trendSignals.length
-        ? tavily.trendSignals
-        : brief.trendSignals,
-      source: "tavily",
-    };
-  } else if (body.targetMarket) {
-    brief = { ...brief, market: body.targetMarket };
-  }
+        // ── Step 2: summarizeProduct ─────────────────────────────────────────
+        const partial = await race(summarizeProduct(url, rawSnippet), 6000);
 
-  // If the founder gave a one-liner note, lace it into the description so the tribe
-  // generator has the founder's own framing (not just Tavily snippets).
-  if (body.productNote) {
-    brief = {
-      ...brief,
-      description: brief.description
-        ? `${body.productNote} — ${brief.description}`
-        : body.productNote,
-    };
-  }
+        const market: string =
+          body.targetMarket ||
+          (typeof partial?.market === "string" && partial.market) ||
+          "Unknown — infer from context";
 
-  const remaining = Math.max(2000, deadline - Date.now());
-  const liveTribes = await Promise.race([
-    generateTribes(brief, {
-      testType: body.testType,
-      productNote: body.productNote,
-      targetMarket: body.targetMarket,
-      assetMode: body.assetMode,
-    }).catch(() => null),
-    new Promise<null>((r) => setTimeout(() => r(null), remaining)),
-  ]);
+        const brief: ProductBrief = {
+          name: productName,
+          url,
+          oneLiner:
+            typeof partial?.oneLiner === "string" && partial.oneLiner
+              ? partial.oneLiner
+              : `${productName} — product launch`,
+          description:
+            typeof partial?.description === "string" && partial.description
+              ? partial.description
+              : rawSnippet || `Product at ${url}.`,
+          market,
+          keyPromise:
+            typeof partial?.keyPromise === "string" && partial.keyPromise
+              ? partial.keyPromise
+              : "Infer from the page",
+          competitorSignals: [],
+          trendSignals: [],
+          source: "tavily",
+        };
 
-  if (liveTribes && liveTribes.length === 7) {
-    return NextResponse.json({
-      brief,
-      tribes: liveTribes,
-      initialAssets: assetsRound1,
-      agents: baseAgents,
-      mode: "live",
-    });
-  }
+        if (body.productNote) {
+          brief.description = brief.description
+            ? `${body.productNote} — ${brief.description}`
+            : body.productNote;
+        }
 
-  return NextResponse.json({
-    brief,
-    tribes: fallback.tribes,
-    initialAssets: assetsRound1,
-    agents: baseAgents,
-    mode: "fallback",
+        emit("brief", brief);
+
+        // ── Step 3: competitors + trends in parallel ─────────────────────────
+        const [compResults, trendResults] = await Promise.all([
+          race(searchCompetitors(market, productName), 8000),
+          race(searchTrends(market), 8000),
+        ]);
+
+        emit("tavily:competitors", compResults ?? []);
+        emit("tavily:trends", trendResults ?? []);
+
+        // Enrich brief with signals before tribe generation
+        const briefWithSignals: ProductBrief = {
+          ...brief,
+          competitorSignals: (compResults ?? []).map((r) => r.title).filter(Boolean),
+          trendSignals: (trendResults ?? []).map((r) => r.title).filter(Boolean),
+        };
+
+        // ── Step 4: generateTribes ───────────────────────────────────────────
+        const liveTribes = await race(
+          generateTribes(briefWithSignals, {
+            testType: body.testType,
+            productNote: body.productNote,
+            targetMarket: body.targetMarket,
+            assetMode: body.assetMode,
+          }),
+          25000,
+        );
+
+        if (liveTribes && liveTribes.length === 7) {
+          emit("tribes:all", liveTribes);
+          emit("agents", baseAgents);
+          emit("initialAssets", assetsRound1);
+          emit("done", { mode: "live" });
+        } else {
+          emit("tribes:all", tribes);
+          emit("agents", baseAgents);
+          emit("initialAssets", assetsRound1);
+          emit("done", { mode: "fallback-tribes" });
+        }
+      } catch (err) {
+        // Emit a safe fallback so the client isn't left hanging
+        emit("tribes:all", tribes);
+        emit("agents", baseAgents);
+        emit("initialAssets", assetsRound1);
+        emit("done", { mode: "fallback", error: String(err) });
+      } finally {
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+    },
   });
 }

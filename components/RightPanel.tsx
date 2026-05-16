@@ -2,6 +2,8 @@
 
 import { AnimatePresence, motion } from "framer-motion";
 import type { AppStage, LaunchAsset, RoundResult, Tribe, Recommendation } from "@/lib/types";
+import type { TavilyState } from "@/lib/session";
+import { TavilyOrchestrator } from "@/components/TavilyOrchestrator";
 import clsx from "clsx";
 
 type Props = {
@@ -15,6 +17,7 @@ type Props = {
   isWorking: boolean;
   onAdvance: () => void;
   onReset: () => void;
+  tavily: TavilyState;
 };
 
 export function RightPanel({
@@ -28,6 +31,7 @@ export function RightPanel({
   isWorking,
   onAdvance,
   onReset,
+  tavily,
 }: Props) {
   const overall = rounds[rounds.length - 1]?.overallConversion ?? 0;
   const tribeMap = new Map(tribes.map((t) => [t.id, t]));
@@ -127,27 +131,14 @@ export function RightPanel({
           )}
         </AnimatePresence>
 
-        {/* Market signals */}
-        {(stage !== "idle" || signals.length > 0) && (
-          <Panel title="Market signals" badge="Research">
-            {signals.length === 0 ? (
-              <SignalsLoading />
-            ) : (
-              <ul className="space-y-1.5">
-                {signals.map((s, i) => (
-                  <motion.li
-                    key={s}
-                    initial={{ opacity: 0, x: -6 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: i * 0.05 }}
-                    className="text-[12px] leading-snug text-ink-300 pl-3 relative"
-                  >
-                    <span className="absolute left-0 top-1.5 w-1 h-1 rounded-full bg-plasma" />
-                    {s}
-                  </motion.li>
-                ))}
-              </ul>
-            )}
+        {/* Market intelligence */}
+        {stage !== "idle" && (
+          <Panel title="Market intelligence" badge="Tavily">
+            <TavilyOrchestrator
+              product={tavily.product}
+              competitors={tavily.competitors}
+              trends={tavily.trends}
+            />
           </Panel>
         )}
 

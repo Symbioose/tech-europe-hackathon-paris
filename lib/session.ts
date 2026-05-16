@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { AppStage, Session } from "./types";
 import type { LaunchSetupValues } from "@/components/LaunchSetup";
+import type { TavilyResult } from "@/lib/integrations/tavily";
 import {
   applyRoundState,
   buildFallbackSession,
@@ -13,6 +14,12 @@ import {
 } from "./demo-data";
 import { feedByRound, type FeedMessage } from "./demo/feed";
 
+export type TavilyState = {
+  product: TavilyResult[] | null;
+  competitors: TavilyResult[] | null;
+  trends: TavilyResult[] | null;
+};
+
 export type ViewState = {
   stage: AppStage;
   session: Session;
@@ -21,6 +28,7 @@ export type ViewState = {
   isWorking: boolean;
   signals: string[];
   feed: FeedMessage[];
+  tavily: TavilyState;
 };
 
 const initial: ViewState = {
@@ -31,6 +39,7 @@ const initial: ViewState = {
   isWorking: false,
   signals: [],
   feed: [],
+  tavily: { product: null, competitors: null, trends: null },
 };
 
 const RESEARCH_STEPS = [
@@ -102,6 +111,7 @@ export function useSession() {
           recommendation: finalize ? fallbackRecommendation : undefined,
         }),
         feed: [],
+        tavily: { product: null, competitors: null, trends: null },
       });
     };
     if (stage === "tribes") buildAt(0, false);
@@ -109,6 +119,8 @@ export function useSession() {
     else if (stage === "r2") buildAt(2, false);
     else if (stage === "r3") buildAt(3, false);
     else if (stage === "winner") buildAt(3, true);
+    // Reset tavily state for URL-stage shortcuts (no SSE was consumed)
+    setView((v) => ({ ...v, tavily: { product: null, competitors: null, trends: null } }));
 
     // Build cumulative feed for the URL-stage shortcut too.
     const fl: FeedMessage[] = [];
@@ -152,57 +164,159 @@ export function useSession() {
       currentRound: 0,
       session: buildFallbackSession(),
       feed: [],
+      tavily: { product: null, competitors: null, trends: null },
     }));
 
-    const runPromise = fetch("/api/run", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        productUrl: setup.productUrl || "https://ouraring.com",
-        platform: setup.platform,
-        testType: setup.testType,
-        productNote: setup.productNote,
-        targetMarket: setup.targetMarket,
-        assetMode: setup.assetMode,
-      }),
-    })
-      .then((r) => (r.ok ? r.json() : null))
-      .catch(() => null);
+    const headers = { "Content-Type": "application/json" };
+    const body = JSON.stringify({
+      productUrl: setup.productUrl || "https://ouraring.com",
+      platform: setup.platform,
+      testType: setup.testType,
+      productNote: setup.productNote,
+      targetMarket: setup.targetMarket,
+      assetMode: setup.assetMode,
+    });
 
-    for (let i = 0; i < RESEARCH_STEPS.length; i++) {
-      await delay(320);
-      setView((v) => ({ ...v, signals: RESEARCH_STEPS.slice(0, i + 1) }));
-    }
-
-    const result = await Promise.race([
-      runPromise,
-      new Promise<null>((r) => setTimeout(() => r(null), 35000)),
-    ]);
-
-    // Compute the final session inline so we can use it both for setView and creative fetches
     let finalSession: typeof initial.session = viewRef.current.session;
-    setView((v) => {
-      finalSession =
-        result && Array.isArray(result.tribes) && result.tribes.length === 7
-          ? {
-              ...v.session,
-              brief: result.brief ?? v.session.brief,
-              tribes: result.tribes,
-              assets: Array.isArray(result.initialAssets)
-                ? result.initialAssets
-                : v.session.assets,
-              agents: Array.isArray(result.agents) ? result.agents : v.session.agents,
-            }
-          : v.session;
-      const signals = buildSignals(finalSession);
-      return {
+
+    try {
+      const res = await fetch("/api/run", { method: "POST", headers, body });
+
+      if (!res.body) {
+        // Fallback: no streaming support — treat as done with fallback session
+        setView((v) => ({
+          ...v,
+          stage: "tribes_ready",
+          isWorking: false,
+        }));
+        return;
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      // Accumulator holds partial SSE state until `done` is received
+      const acc: {
+        brief?: import("./types").ProductBrief;
+        tribes?: import("./types").Tribe[];
+        agents?: import("./types").BuyerAgent[];
+        initialAssets?: import("./types").LaunchAsset[];
+      } = {};
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const events = buffer.split("\n\n");
+        buffer = events.pop() ?? "";
+
+        for (const raw of events) {
+          const lines = raw.trim().split("\n");
+          let eventName = "";
+          let dataLine = "";
+          for (const line of lines) {
+            if (line.startsWith("event: ")) eventName = line.slice(7).trim();
+            if (line.startsWith("data: ")) dataLine = line.slice(6).trim();
+          }
+          if (!eventName || !dataLine) continue;
+
+          let parsed: unknown;
+          try {
+            parsed = JSON.parse(dataLine);
+          } catch {
+            continue;
+          }
+
+          switch (eventName) {
+            case "tavily:product":
+              setView((v) => ({
+                ...v,
+                tavily: { ...v.tavily, product: parsed as import("@/lib/integrations/tavily").TavilyResult[] },
+              }));
+              break;
+            case "tavily:competitors":
+              setView((v) => ({
+                ...v,
+                tavily: { ...v.tavily, competitors: parsed as import("@/lib/integrations/tavily").TavilyResult[] },
+              }));
+              break;
+            case "tavily:trends":
+              setView((v) => ({
+                ...v,
+                tavily: { ...v.tavily, trends: parsed as import("@/lib/integrations/tavily").TavilyResult[] },
+              }));
+              break;
+            case "brief":
+              acc.brief = parsed as import("./types").ProductBrief;
+              break;
+            case "tribes:all":
+              acc.tribes = parsed as import("./types").Tribe[];
+              break;
+            case "agents":
+              acc.agents = parsed as import("./types").BuyerAgent[];
+              break;
+            case "initialAssets":
+              acc.initialAssets = parsed as import("./types").LaunchAsset[];
+              break;
+            case "done":
+              // Commit accumulated session state
+              setView((v) => {
+                const tribes = Array.isArray(acc.tribes) && acc.tribes.length === 7
+                  ? acc.tribes
+                  : v.session.tribes;
+                finalSession = {
+                  ...v.session,
+                  brief: acc.brief ?? v.session.brief,
+                  tribes,
+                  assets: Array.isArray(acc.initialAssets) ? acc.initialAssets : v.session.assets,
+                  agents: Array.isArray(acc.agents) ? acc.agents : v.session.agents,
+                };
+                const signals = buildSignals(finalSession);
+                return {
+                  ...v,
+                  stage: "tribes_ready",
+                  isWorking: false,
+                  session: finalSession,
+                  signals: signals.length ? signals : buildSignals(buildFallbackSession()),
+                };
+              });
+              break;
+          }
+        }
+      }
+
+      // If `done` event never arrived (stream closed without it), commit what we have
+      if (viewRef.current.stage === "researching") {
+        setView((v) => {
+          const tribes = Array.isArray(acc.tribes) && acc.tribes.length === 7
+            ? acc.tribes
+            : v.session.tribes;
+          finalSession = {
+            ...v.session,
+            brief: acc.brief ?? v.session.brief,
+            tribes,
+            assets: Array.isArray(acc.initialAssets) ? acc.initialAssets : v.session.assets,
+            agents: Array.isArray(acc.agents) ? acc.agents : v.session.agents,
+          };
+          const signals = buildSignals(finalSession);
+          return {
+            ...v,
+            stage: "tribes_ready",
+            isWorking: false,
+            session: finalSession,
+            signals: signals.length ? signals : buildSignals(buildFallbackSession()),
+          };
+        });
+      }
+    } catch {
+      // Network failure — fall through to tribes_ready with fallback data
+      setView((v) => ({
         ...v,
         stage: "tribes_ready",
         isWorking: false,
-        session: finalSession,
-        signals: signals.length ? signals : buildSignals(buildFallbackSession()),
-      };
-    });
+      }));
+    }
 
     // Fire 7 parallel creative fetches — do NOT await, so UI transitions immediately
     // eslint-disable-next-line @typescript-eslint/no-floating-promises

@@ -28,6 +28,15 @@ function inferProductName(url: string): string {
   }
 }
 
+function isFalUrl(url: string | undefined) {
+  if (!url) return false;
+  try {
+    return /(^|\.)fal\.ai$/i.test(new URL(url).hostname.replace(/^www\./, ""));
+  } catch {
+    return /fal\.ai/i.test(url);
+  }
+}
+
 function race<T>(promise: Promise<T>, ms: number): Promise<T | null> {
   return Promise.race([
     promise.catch(() => null),
@@ -85,7 +94,8 @@ export async function POST(req: Request) {
         const productResults = await race(extractPage(url), 8000);
         emit("tavily:product", productResults ?? []);
 
-        const productName = inferProductName(url);
+        const falDemo = isFalUrl(url);
+        const productName = falDemo ? "fal.ai" : inferProductName(url);
         const rawSnippet = productResults?.[0]?.snippet ?? "";
 
         // ── Step 2: summarizeProduct ─────────────────────────────────────────
@@ -93,6 +103,9 @@ export async function POST(req: Request) {
 
         const market: string =
           body.targetMarket ||
+          (falDemo
+            ? "B2B AI app builders, creative automation tools, agencies, and growth teams"
+            : "") ||
           (typeof partial?.market === "string" && partial.market) ||
           "Unknown — infer from context";
 
@@ -100,15 +113,24 @@ export async function POST(req: Request) {
           name: productName,
           url,
           oneLiner:
+            falDemo
+              ? "Fast image and video generation API for AI product teams"
+              :
             typeof partial?.oneLiner === "string" && partial.oneLiner
               ? partial.oneLiner
               : `${productName} — product launch`,
           description:
+            falDemo
+              ? "fal.ai gives product teams API access to fast image, video, and generative media models without managing GPU infrastructure."
+              :
             typeof partial?.description === "string" && partial.description
               ? partial.description
               : rawSnippet || `Product at ${url}.`,
           market,
           keyPromise:
+            falDemo
+              ? "Add production-grade image and video generation to your product without managing GPU infrastructure"
+              :
             typeof partial?.keyPromise === "string" && partial.keyPromise
               ? partial.keyPromise
               : "Infer from the page",

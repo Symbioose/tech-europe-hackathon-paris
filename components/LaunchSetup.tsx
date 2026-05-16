@@ -37,8 +37,8 @@ type Props = {
 const DEFAULTS: LaunchSetupValues = {
   testType: "marketing_message",
   productUrl: "https://fal.ai",
-  productNote: "",
-  targetMarket: "",
+  productNote: "Fast image and video generation API for AI product teams.",
+  targetMarket: "B2B AI app builders, creative automation tools, agencies, and growth teams.",
   platform: "auto",
   assetMode: "generate",
   assetText: "",

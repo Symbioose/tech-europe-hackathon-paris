@@ -150,8 +150,8 @@ export function BuyerDrawer({ agent, tribe, onClose, hookSeen }: Props) {
   }
 
   const micLabel: Record<RecordingState, string> = {
-    idle: "Hold to ask",
-    recording: "Listening…",
+    idle: "Tap to ask",
+    recording: "Listening… tap to send",
     thinking: "Thinking…",
     speaking: "Speaking…",
   };
@@ -249,24 +249,25 @@ export function BuyerDrawer({ agent, tribe, onClose, hookSeen }: Props) {
               Ask this buyer
             </div>
             <div className="flex flex-col gap-2">
-              {/* Mic button — shown when browser supports STT */}
+              {/* Mic button — single click toggles recording, release fires the question */}
               {supported && (
                 <button
-                  onMouseDown={startListen}
-                  onMouseUp={stopListen}
-                  onTouchStart={(e) => { e.preventDefault(); startListen(); }}
-                  onTouchEnd={(e) => { e.preventDefault(); stopListen(); }}
+                  type="button"
+                  onClick={() => {
+                    if (recordingState === "recording") stopListen();
+                    else if (recordingState === "idle") startListen();
+                  }}
                   disabled={micBusy}
                   className={[
                     "w-full px-3 py-2.5 rounded-lg font-medium text-[12.5px] transition-all select-none",
                     micActive
-                      ? "bg-flame-500 text-ink-950 scale-[0.97] shadow-inner"
+                      ? "bg-flame-500 text-ink-950 shadow-inner"
                       : micBusy
                       ? "bg-ink-700 text-ink-300 cursor-not-allowed"
                       : "bg-ink-800 border border-ink-600 hover:border-flame-500/60 hover:bg-ink-750 text-ink-100",
                   ].join(" ")}
                 >
-                  {micActive ? "🎙 " : micBusy ? "" : "🎙 "}
+                  {micActive ? "⏹ " : micBusy ? "" : "🎙 "}
                   {micLabel[recordingState]}
                 </button>
               )}

@@ -1,11 +1,10 @@
 import { NextResponse } from "next/server";
 import { gradiumSpeak } from "@/lib/integrations/gradium";
-import { heroBuyerFeedback } from "@/lib/demo-data";
 import type { BuyerAgent, Tribe, VoiceProfile } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
-const fallbackByState: Record<string, string> = {
+const defaultAnswerByState: Record<string, string> = {
   converted:
     "I clicked because the hook named a moment I recognized. Then the landing page paid it off in 30 seconds. That's why I bought before my coffee.",
   curious:
@@ -13,7 +12,7 @@ const fallbackByState: Record<string, string> = {
   seen:
     "I scrolled past. The hook didn't name anything I'm currently feeling. Try targeting me on a Monday morning instead.",
   repelled:
-    "Either the format doesn't fit my context, or it felt like another wearable subscription. I'm not your buyer yet.",
+    "Either the format doesn't fit my context, or the promise felt too broad to trust. I'm not your buyer yet.",
   idle:
     "I haven't been targeted yet — I'm in the cohort waiting on the next campaign.",
 };
@@ -144,11 +143,7 @@ export async function POST(req: Request) {
   }
 
   if (!text) {
-    if (buyer.isHero && buyer.state === "converted") {
-      text = heroBuyerFeedback;
-    } else {
-      text = fallbackByState[buyer.state] ?? fallbackByState.seen;
-    }
+    text = defaultAnswerByState[buyer.state] ?? defaultAnswerByState.seen;
   }
 
   const profile: VoiceProfile = buyer.voiceProfile ?? "f-mid";
@@ -162,6 +157,6 @@ export async function POST(req: Request) {
   return NextResponse.json({
     text,
     audioUrl,
-    mode: audioUrl?.startsWith("/demo") ? "fallback" : "live",
+    mode: audioUrl ? "live" : "text",
   });
 }

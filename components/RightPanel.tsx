@@ -7,6 +7,7 @@ import { TavilyOrchestrator } from "@/components/TavilyOrchestrator";
 import { RecommendationFourBlocks } from "@/components/RecommendationFourBlocks";
 import { TribePlaybook } from "@/components/TribePlaybook";
 import clsx from "clsx";
+import { marketSignalScore, overallMarketSignal } from "@/lib/market-score";
 
 type Props = {
   stage: AppStage;
@@ -43,7 +44,8 @@ export function RightPanel({
   tavily,
   videoUrl,
 }: Props) {
-  const overall = rounds[rounds.length - 1]?.overallConversion ?? 0;
+  const latestRound = rounds[rounds.length - 1];
+  const overall = overallMarketSignal(latestRound);
   const tribeMap = new Map(tribes.map((t) => [t.id, t]));
 
   // Find which asset matches the highlighted tribe for the current round.
@@ -51,7 +53,7 @@ export function RightPanel({
     recommendation?.winningTribeId ??
     rounds[rounds.length - 1]?.tribeScores
       .slice()
-      .sort((a, b) => b.conversionRate - a.conversionRate)[0]?.tribeId;
+      .sort((a, b) => marketSignalScore(b) - marketSignalScore(a))[0]?.tribeId;
   const focusAsset = focusTribeId ? assets.find((a) => a.tribeId === focusTribeId) : assets[0];
   const focusTribe = focusTribeId ? tribeMap.get(focusTribeId) : undefined;
 
@@ -64,7 +66,7 @@ export function RightPanel({
         <div className="flex items-center justify-between">
           <div>
             <div className="text-[10px] uppercase tracking-[0.18em] text-ink-400">
-              Conversion
+              Market signal
             </div>
             <div className="flex items-baseline gap-2 mt-0.5">
               <motion.span
@@ -72,9 +74,9 @@ export function RightPanel({
                 initial={{ opacity: 0, y: 6 }}
                 animate={{ opacity: 1, y: 0 }}
                 className="text-3xl font-semibold tabular-nums"
-                style={{ color: overall >= 0.3 ? "#3affe9" : overall >= 0.15 ? "#ffcf6b" : "#e9ecf6" }}
+                style={{ color: overall >= 58 ? "#3affe9" : overall >= 42 ? "#ffcf6b" : "#e9ecf6" }}
               >
-                {Math.round(overall * 100)}%
+                {overall}/100
               </motion.span>
               {rounds.length > 0 && (
                 <span className="text-[11px] text-ink-400">
@@ -97,23 +99,24 @@ export function RightPanel({
               .slice()
               .sort((a, b) => a.round - b.round)
               .map((r) => {
+                const signal = overallMarketSignal(r);
                 const tone =
-                  r.overallConversion >= 0.3
+                  signal >= 58
                     ? "#3affe9"
-                    : r.overallConversion >= 0.15
+                    : signal >= 42
                     ? "#ffcf6b"
                     : "#ff7a1a";
                 return (
                   <div
                     key={r.round}
-                    title={`Round ${r.round} · ${Math.round(r.overallConversion * 100)}%`}
+                    title={`Round ${r.round} · market signal ${signal}/100`}
                     className="flex-1 h-1.5 rounded-full bg-ink-700/80 overflow-hidden"
                   >
                     <motion.div
                       className="h-full"
                       style={{ background: tone }}
                       initial={{ width: 0 }}
-                      animate={{ width: `${Math.min(100, r.overallConversion * 100 * 3)}%` }}
+                      animate={{ width: `${Math.min(100, signal)}%` }}
                       transition={{ duration: 0.55, ease: "easeOut" }}
                     />
                   </div>
@@ -450,4 +453,3 @@ function SignalsLoading() {
     </div>
   );
 }
-

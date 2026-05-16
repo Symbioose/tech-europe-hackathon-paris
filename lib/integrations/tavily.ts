@@ -1,7 +1,7 @@
 export type TavilySnapshot = {
   competitorSignals: string[];
   trendSignals: string[];
-  source: "tavily" | "fallback";
+  source: "tavily" | "manual";
 };
 
 export type TavilyResult = {

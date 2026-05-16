@@ -46,12 +46,10 @@ export async function POST(req: NextRequest) {
   const imageTimeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 6000));
   const imageUrl = await Promise.race([falPromise, imageTimeout]);
 
-  const newImageUrl = imageUrl ?? `/demo/creative-r2-${(tribeIndex % 2) + 1}.png`;
-
   return NextResponse.json({
     tribeId,
     oldHook: previousHook,
     newHook,
-    newImageUrl,
+    newImageUrl: imageUrl,
   });
 }

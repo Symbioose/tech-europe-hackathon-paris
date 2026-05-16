@@ -24,7 +24,7 @@ export function TopBar({
   onRun,
   disabled,
   busyLabel,
-  initialUrl = "https://fal.ai",
+  initialUrl = "",
   initialPlatform = "auto",
 }: Props) {
   const [url, setUrl] = useState(initialUrl);

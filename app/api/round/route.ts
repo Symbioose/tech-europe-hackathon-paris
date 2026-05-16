@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
-import { applyRoundState, assetsByRound, baseAgents } from "@/lib/demo-data";
+import { buildAgentsForTribes } from "@/lib/agents";
 import { simulateTribeReaction, type SimulatedReaction } from "@/lib/integrations/openai";
+import { marketSignalScore, objectionIntensity } from "@/lib/market-score";
 import type {
   AgentState,
   BuyerAgent,
@@ -23,7 +24,7 @@ const roundNarrative: Record<number, Pick<RoundResult, "learning">> = {
     learning: "The marketer rewrote weak hooks around concrete moments, then shifted attention toward tribes with clearer buying triggers.",
   },
   3: {
-    learning: "The final round narrowed on the strongest tribe, repeated its exact trigger, and removed the main objection from the path to conversion.",
+    learning: "The final round narrowed on the strongest tribe, repeated its exact trigger, and removed the main objection from the validation path.",
   },
 };
 
@@ -81,9 +82,7 @@ function distributeStates(
 
 function pickAssets(round: number, incoming?: LaunchAsset[]) {
   if (incoming?.length) return incoming;
-  // assetsByRound only goes up to 3; for higher rounds, reuse the latest variant.
-  const key = (round >= 3 ? 3 : round) as 1 | 2 | 3;
-  return assetsByRound[key];
+  return [];
 }
 
 function reactionToScore(reaction: SimulatedReaction): TribeScore {
@@ -98,7 +97,7 @@ function reactionToScore(reaction: SimulatedReaction): TribeScore {
   };
 }
 
-function fallbackScore(tribe: Tribe, round: number, index: number): TribeScore {
+function heuristicScore(tribe: Tribe, round: number, index: number): TribeScore {
   const baseByRound: Record<number, number> = { 1: 0.09, 2: 0.18, 3: 0.31 };
   // Rounds beyond 3 keep climbing slightly but with diminishing returns.
   const base = baseByRound[round] ?? Math.min(0.55, 0.31 + (round - 3) * 0.04);
@@ -129,27 +128,17 @@ export async function POST(req: Request) {
   const updatedAssets = pickAssets(round, body.assets);
 
   if (tribes.length !== 7) {
-    // No live data → return deterministic fallback so the UI doesn't break.
-    const fallbackScores: TribeScore[] = tribes.map((t, i) => fallbackScore(t, round, i));
-    const baselineByRound: Record<number, number> = { 1: 0.09, 2: 0.18, 3: 0.31 };
-    const overallFallback =
-      baselineByRound[round] ?? Math.min(0.55, 0.31 + (round - 3) * 0.04);
-    const fallbackRound = (round >= 3 ? 3 : round) as 1 | 2 | 3;
-    const result: RoundResult = {
-      round,
-      overallConversion: overallFallback,
-      learning: learningFor(round),
-      highlights: [],
-      failures: [],
-      assets: updatedAssets,
-      tribeScores: fallbackScores,
-    };
-    return NextResponse.json({
-      roundResult: result,
-      updatedAssets,
-      updatedAgents: applyRoundState(fallbackRound, baseAgents),
-      mode: "no-tribes",
-    });
+    return NextResponse.json(
+      { error: "Run a market simulation before launching a round." },
+      { status: 400 },
+    );
+  }
+
+  if (updatedAssets.length !== 7) {
+    return NextResponse.json(
+      { error: "Round simulation requires one launch asset per tribe." },
+      { status: 400 },
+    );
   }
 
   // Build a lookup for previous round's per-tribe scores (used to give round 2/3 context).
@@ -158,7 +147,6 @@ export async function POST(req: Request) {
     (prevRound?.tribeScores ?? []).map((s) => [s.tribeId, s]),
   );
 
-  // Fire 7 parallel real simulations.
   const reactions: Array<SimulatedReaction | null> = await Promise.all(
     tribes.map((tribe) => {
       const asset =
@@ -182,10 +170,11 @@ export async function POST(req: Request) {
 
   const tribeScores: TribeScore[] = tribes.map((tribe, i) => {
     const reaction = reactions[i];
-    return reaction ? reactionToScore(reaction) : fallbackScore(tribe, round, i);
+    return reaction ? reactionToScore(reaction) : heuristicScore(tribe, round, i);
   });
 
-  // Build live agents: take the existing 70 buyers, regroup by tribe, distribute states by score.
+  // Build live agents from the current generated tribes, then distribute states by score.
+  const baseAgents = buildAgentsForTribes(tribes);
   const baseByTribe = new Map<string, BuyerAgent[]>();
   for (const a of baseAgents) {
     const list = baseByTribe.get(a.tribeId) ?? [];
@@ -199,9 +188,9 @@ export async function POST(req: Request) {
     return distributeStates(pool, score);
   });
 
-  // Sort tribeScores DESC by conversion (winner-first ordering everywhere)
-  const sortedDesc = [...tribeScores].sort((a, b) => b.conversionRate - a.conversionRate);
-  const sortedAsc = [...tribeScores].sort((a, b) => a.conversionRate - b.conversionRate);
+  // Sort tribeScores DESC by market signal (winner-first ordering everywhere).
+  const sortedDesc = [...tribeScores].sort((a, b) => marketSignalScore(b) - marketSignalScore(a));
+  const sortedAsc = [...tribeScores].sort((a, b) => marketSignalScore(a) - marketSignalScore(b));
 
   const overallConversion =
     tribeScores.reduce((sum, s) => sum + s.conversionRate, 0) / tribeScores.length;
@@ -219,11 +208,11 @@ export async function POST(req: Request) {
   // Highlights & failures derived from the LIVE reactions (no hardcoded copy).
   const highlights = sortedDesc.slice(0, 2).map((s) => {
     const tribe = tribes.find((t) => t.id === s.tribeId);
-    return `${tribe?.name ?? s.tribeId} converted ${Math.round(s.conversionRate * 100)}%: "${s.representativeFeedback.slice(0, 90)}"`;
+    return `${tribe?.name ?? s.tribeId} signal ${marketSignalScore(s)}/100: "${s.representativeFeedback.slice(0, 90)}"`;
   });
   const failures = sortedAsc.slice(0, 2).map((s) => {
     const tribe = tribes.find((t) => t.id === s.tribeId);
-    return `${tribe?.name ?? s.tribeId} only ${Math.round(s.conversionRate * 100)}%: ${s.topObjections[0] ?? "no clear objection"}`;
+    return `${tribe?.name ?? s.tribeId} objection ${objectionIntensity(s)}/100: ${s.topObjections[0] ?? "no clear objection"}`;
   });
 
   const roundResult: RoundResult = {

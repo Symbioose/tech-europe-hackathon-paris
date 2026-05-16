@@ -36,9 +36,9 @@ type Props = {
 
 const DEFAULTS: LaunchSetupValues = {
   testType: "marketing_message",
-  productUrl: "https://fal.ai",
-  productNote: "Fast image and video generation API for AI product teams.",
-  targetMarket: "B2B AI app builders, creative automation tools, agencies, and growth teams.",
+  productUrl: "",
+  productNote: "",
+  targetMarket: "",
   platform: "auto",
   assetMode: "generate",
   assetText: "",
@@ -55,7 +55,7 @@ export function LaunchSetup({ onLaunch }: Props) {
   function submit() {
     onLaunch({
       ...values,
-      productUrl: values.productUrl.trim() || DEFAULTS.productUrl,
+      productUrl: values.productUrl.trim(),
     });
   }
 
@@ -75,7 +75,7 @@ export function LaunchSetup({ onLaunch }: Props) {
             CRUCIBLE
           </div>
           <div className="text-[10px] uppercase tracking-[0.24em] text-ink-300/80">
-            Tech: Europe Paris · 2026
+            Open source preview
           </div>
         </header>
 
@@ -114,7 +114,7 @@ export function LaunchSetup({ onLaunch }: Props) {
                 <Sep />
                 <Stat value="70" label="synthetic buyers" />
                 <Sep />
-                <Stat value="100×" label="cheaper than user research" />
+                <Stat value="1" label="targeting plan" />
                 <Sep />
                 <Stat value="0" label="recruiting" />
               </div>

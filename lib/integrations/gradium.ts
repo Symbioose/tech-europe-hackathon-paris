@@ -10,21 +10,13 @@ const GRADIUM_VOICE_MAP: Record<VoiceProfile, string> = {
   "m-mature": "-0MuXG9RcCsuSVtb",
 };
 
-// OpenAI TTS as secondary fallback (the OpenAI key is already configured for the demo).
+// OpenAI TTS is used as an optional secondary provider when Gradium is not configured.
 const OPENAI_VOICE_MAP: Record<VoiceProfile, string> = {
   "f-young": "nova",
   "f-mid": "shimmer",
   "m-young": "echo",
   "m-mid": "alloy",
   "m-mature": "onyx",
-};
-
-const FALLBACK_M4A: Record<VoiceProfile, string> = {
-  "f-young": "/demo/voice-f-young-sample.m4a",
-  "f-mid": "/demo/voice-f-mid-sample.m4a",
-  "m-young": "/demo/voice-m-young-sample.m4a",
-  "m-mid": "/demo/voice-m-mid-sample.m4a",
-  "m-mature": "/demo/voice-m-mature-sample.m4a",
 };
 
 async function tryGradium(text: string, profile: VoiceProfile): Promise<string | null> {
@@ -103,7 +95,5 @@ export async function gradiumSpeak(
   if (gradium) return gradium;
   const openai = await tryOpenAITTS(text, profile);
   if (openai) return openai;
-  return FALLBACK_M4A[profile];
+  return null;
 }
-
-export const FALLBACK_VOICE_PATHS = FALLBACK_M4A;

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import type { BuyerAgent, Tribe } from "@/lib/types";
-import { clusterCenters as DEMO_CLUSTERS } from "@/lib/demo/agents";
+import { clusterCenters as DEMO_CLUSTERS } from "@/lib/agents";
 
 type Props = {
   agents: BuyerAgent[];

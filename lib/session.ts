@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   AppStage,
   LaunchAsset,
+  ProductBrief,
   Recommendation,
   Session,
   TribeRecommendation,
@@ -12,16 +13,13 @@ import type {
 } from "./types";
 import type { LaunchSetupValues } from "@/components/LaunchSetup";
 import type { TavilyResult } from "@/lib/integrations/tavily";
-import {
-  applyRoundState,
-  buildFallbackSession,
-  roundResults,
-  recommendation as fallbackRecommendation,
-  assetsByRound,
-  baseAgents,
-} from "./demo-data";
-import { feedByRound, type FeedMessage } from "./demo/feed";
+import type { FeedMessage } from "./feed";
 import type { BuyerAgent, RoundResult as RoundResultType, Tribe } from "./types";
+import {
+  confidenceForSession,
+  marketSignalScore,
+  overallMarketSignal,
+} from "./market-score";
 
 export type TavilyState = {
   product: TavilyResult[] | null;
@@ -47,9 +45,31 @@ export type ViewState = {
   videoStatus?: "pending" | "completed" | "error";
 };
 
+const emptyBrief: ProductBrief = {
+  name: "",
+  url: "",
+  oneLiner: "",
+  description: "",
+  market: "",
+  keyPromise: "",
+  competitorSignals: [],
+  trendSignals: [],
+  source: "manual",
+};
+
+function buildEmptySession(): Session {
+  return {
+    brief: emptyBrief,
+    tribes: [],
+    agents: [],
+    assets: [],
+    rounds: [],
+  };
+}
+
 const initial: ViewState = {
   stage: "idle",
-  session: buildFallbackSession(),
+  session: buildEmptySession(),
   currentRound: 0,
   selectedAgentId: null,
   isWorking: false,
@@ -91,17 +111,17 @@ function buildLiveFeed(
   const tribeNameOf = (id: string) =>
     tribes.find((t) => t.id === id)?.name ?? "Top tribe";
   const sortedDesc = [...roundResult.tribeScores].sort(
-    (a, b) => b.conversionRate - a.conversionRate,
+    (a, b) => marketSignalScore(b) - marketSignalScore(a),
   );
   const winner = sortedDesc[0];
-  const overallPct = Math.round(roundResult.overallConversion * 100);
+  const overallScore = overallMarketSignal(roundResult);
 
   messages.push({
     id: `r${roundResult.round}-announce`,
     agentName: "Crucible",
     text: winner
-      ? `Round ${roundResult.round} done · ${overallPct}% conversion · ${tribeNameOf(winner.tribeId)} leading at ${Math.round(winner.conversionRate * 100)}%.`
-      : `Round ${roundResult.round} done · ${overallPct}% conversion.`,
+      ? `Round ${roundResult.round} done · market signal ${overallScore}/100 · ${tribeNameOf(winner.tribeId)} leading at ${marketSignalScore(winner)}/100.`
+      : `Round ${roundResult.round} done · market signal ${overallScore}/100.`,
     type: "announcement",
     round: roundResult.round,
   });
@@ -212,10 +232,7 @@ function buildTribeBreakdown(
     const score = scoreById.get(tribe.id);
     const asset = assets.find((item) => item.tribeId === tribe.id);
     const verdict = verdictForScore(score);
-    const conversionPct = Math.round((score?.conversionRate ?? 0) * 100);
-    const curiousPct = Math.round(
-      Math.max(0, (score?.clickRate ?? 0) - (score?.conversionRate ?? 0)) * 100,
-    );
+    const signal = marketSignalScore(score);
     const repelledPct = Math.round((score?.repelledRate ?? 0) * 100);
     const objection = score?.topObjections?.[0] || tribe.topObjection;
     const hook = asset?.hook || `Solve ${tribe.mainPain}`;
@@ -223,10 +240,10 @@ function buildTribeBreakdown(
 
     const justification =
       verdict === "strong"
-        ? `${conversionPct}% converted and ${curiousPct}% stayed curious. This is the clearest first-wave target.`
+        ? `Market signal ${signal}/100 with low enough objection pressure. This is the clearest first-wave target.`
         : verdict === "refine"
-          ? `${conversionPct}% converted, ${curiousPct}% stayed curious, and ${repelledPct}% were repelled. The audience is real, but the message needs sharper proof.`
-          : `${conversionPct}% converted while ${repelledPct}% were repelled. Do not lead the launch with this population yet.`;
+          ? `Market signal ${signal}/100, but objection intensity is ${repelledPct}/100. Retest with sharper proof.`
+          : `Market signal ${signal}/100 with objection intensity ${repelledPct}/100. Do not lead the launch with this population yet.`;
 
     return {
       tribeId: tribe.id,
@@ -252,7 +269,7 @@ function buildTribeBreakdown(
       improvedHook:
         verdict === "strong"
           ? hook
-          : `${tribe.mainPain.split(".")[0].slice(0, 64)} — solved without the usual friction`,
+          : `${tribe.mainPain.replace(/[.!?]+$/g, "").slice(0, 58)} — with proof before switching`,
       improvedCta:
         verdict === "strong"
           ? asset?.cta || "Try it now"
@@ -268,18 +285,64 @@ function buildTribeBreakdown(
 }
 
 function buildRecommendation(session: Session): Recommendation {
-  // Pick the winner from the most recent round's tribeScores (sorted DESC by conversionRate).
-  // Fall back to the Oura demo recommendation when live data is missing.
   const lastRound = [...session.rounds].sort((a, b) => b.round - a.round)[0];
   const rankedScores = [...(lastRound?.tribeScores ?? [])].sort(
-    (a, b) => b.conversionRate - a.conversionRate,
+    (a, b) => marketSignalScore(b) - marketSignalScore(a),
   );
   const winnerScore = rankedScores[0];
-  if (!winnerScore) return fallbackRecommendation;
+  if (!winnerScore) {
+    return {
+      winningTribeId: "",
+      winningHook: "Run at least one round to generate a recommendation.",
+      landingHeadline: "No launch recommendation yet",
+      cta: "Run a round",
+      objectionToAvoid: "",
+      whyItWon: "No buyer reactions have been simulated yet.",
+      nextAction: "Run a market simulation, then run at least one round.",
+      ranker: "deterministic",
+      tribeBreakdown: [],
+    };
+  }
   const winningTribe = session.tribes.find((t) => t.id === winnerScore.tribeId);
   const winningAsset = session.assets.find((a) => a.tribeId === winnerScore.tribeId);
-  if (!winningTribe || !winningAsset) return fallbackRecommendation;
+  if (!winningTribe || !winningAsset) {
+    return {
+      winningTribeId: winnerScore.tribeId,
+      winningHook: "The winning asset is missing.",
+      landingHeadline: "Launch data incomplete",
+      cta: "Run again",
+      objectionToAvoid: "",
+      whyItWon: winnerScore.representativeFeedback,
+      nextAction: "Run the simulation again so the recommendation has complete tribe and asset data.",
+      ranker: "deterministic",
+      tribeBreakdown: [],
+    };
+  }
   const tribeBreakdown = buildTribeBreakdown(session.tribes, session.assets, rankedScores);
+  const runnerUp = rankedScores
+    .slice(1)
+    .map((score) => session.tribes.find((tribe) => tribe.id === score.tribeId))
+    .find(Boolean);
+  const avoid = rankedScores
+    .slice()
+    .reverse()
+    .map((score) => session.tribes.find((tribe) => tribe.id === score.tribeId))
+    .find(Boolean);
+  const confidence = confidenceForSession(session);
+  const proof = proofForTribe(winningTribe);
+  const channel = channelForTribe(winningTribe);
+  const validationQuestions = [
+    `When did you last feel "${winningTribe.mainPain}"?`,
+    `Which words in "${winningAsset.hook}" sound like your real problem?`,
+    `What would make this feel risky to try this week?`,
+    `What proof would make you trust the product before a demo?`,
+    `Who else on your team would need to care before buying?`,
+    `What would you compare this against today?`,
+    `Where would you naturally look for a solution like this?`,
+    `What would make you ignore this message completely?`,
+    `What would you need to see on the pricing page?`,
+    `How would you describe this pain to a colleague?`,
+  ];
   return {
     winningTribeId: winnerScore.tribeId,
     winningHook: winningAsset.hook,
@@ -290,6 +353,50 @@ function buildRecommendation(session: Session): Recommendation {
     nextAction: `Target ${winningTribe.name} first. Run the next launch wave on ${channelForTribe(winningTribe)} with proof around ${proofForTribe(winningTribe).toLowerCase()}.`,
     ranker: "deterministic",
     tribeBreakdown,
+    actionPlan: {
+      targetFirst: `Target ${winningTribe.name} first.`,
+      useHook: winningAsset.hook,
+      avoidObjection: winningTribe.topObjection,
+      validateWith: `Interview 5 buyers from ${winningTribe.name}${runnerUp ? ` and 3 from ${runnerUp.name}` : ""}.`,
+      confidenceLevel: confidence.level,
+      confidenceReason: confidence.reason,
+      next48Hours: [
+        `Rewrite the landing hero around: "${winningAsset.hook}".`,
+        `Add proof above the fold: ${proof}.`,
+        `Launch one outbound batch on ${channel}.`,
+        `Ask 5 real buyers the validation questions below before scaling spend.`,
+        avoid ? `Do not lead with ${avoid.name} until the objection "${avoid.topObjection}" is resolved.` : "Do not scale paid traffic until interviews confirm the signal.",
+      ],
+      validationPlan: {
+        interviewCount: runnerUp ? 8 : 5,
+        discoveryQuestions: validationQuestions,
+        outboundMessages: [
+          `Saw your team may deal with ${winningTribe.mainPain.toLowerCase()}. I'm testing a sharper way to solve it. Worth a 12-minute sanity check?`,
+          `Quick question: when ${winningTribe.mainPain.toLowerCase()}, what do you use today? I'm validating whether this is painful enough to solve now.`,
+          `I'm not selling yet. I want to understand if "${winningAsset.hook}" describes a real buying moment for ${winningTribe.name}. Open to react?`,
+        ],
+        landingPageAngles: [
+          `Hero: "${winningAsset.hook}" with ${proof.toLowerCase()} immediately underneath.`,
+          `Objection-first page: address "${winningTribe.topObjection}" before features.`,
+          `Comparison page: show why this is better than the current workaround for ${winningTribe.mainPain.toLowerCase()}.`,
+        ],
+        adTests: [
+          `Problem ad: lead with "${winningAsset.hook}" and ask for a demo click.`,
+          `Proof ad: lead with ${proof.toLowerCase()} and measure replies, not likes.`,
+          `Objection ad: name "${winningTribe.topObjection}" and show why it is handled.`,
+        ],
+        goCriteria: [
+          "At least 3 of 5 target interviews repeat the pain unprompted.",
+          "At least 2 buyers ask for a demo, intro, or pricing after the interview.",
+          "The main objection can be answered with proof already available.",
+        ],
+        noGoCriteria: [
+          "Buyers understand the message but say the pain is not urgent.",
+          "The same objection blocks more than half of interviews.",
+          "The winning hook only works after you explain the product manually.",
+        ],
+      },
+    },
   };
 }
 
@@ -309,67 +416,6 @@ export function useSession() {
     };
   }, []);
 
-  // Optional ?stage=tribes|r1|r2|r3|winner — instantly jump for screenshots/demo.
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const params = new URLSearchParams(window.location.search);
-    const stage = params.get("stage");
-    if (!stage) return;
-    const buildAt = (round: 0 | 1 | 2 | 3, finalize: boolean) => {
-      const agents = round === 0 ? baseAgents.map((a) => ({ ...a })) : applyRoundState(round as 1 | 2 | 3, baseAgents);
-      const assets =
-        round === 0
-          ? assetsByRound[1].map((a) => ({ ...a }))
-          : assetsByRound[round as 1 | 2 | 3].map((a) => ({ ...a }));
-      const rounds = round === 0 ? [] : roundResults.slice(0, round);
-      setView({
-        stage: finalize ? "winner_ready" : round === 0 ? "tribes_ready" : "round_active",
-        session: {
-          ...buildFallbackSession(),
-          agents,
-          assets,
-          rounds,
-          recommendation: finalize ? fallbackRecommendation : undefined,
-        },
-        currentRound: round,
-        selectedAgentId: null,
-        isWorking: false,
-        signals: buildSignals({
-          ...buildFallbackSession(),
-          agents,
-          assets,
-          rounds,
-          recommendation: finalize ? fallbackRecommendation : undefined,
-        }),
-        feed: [],
-        tavily: { product: null, competitors: null, trends: null, pricing: null, community: null },
-        regenState: {},
-      });
-    };
-    if (stage === "tribes") buildAt(0, false);
-    else if (stage === "r1") buildAt(1, false);
-    else if (stage === "r2") buildAt(2, false);
-    else if (stage === "r3") buildAt(3, false);
-    else if (stage === "winner") buildAt(3, true);
-    // Reset tavily state for URL-stage shortcuts (no SSE was consumed)
-    setView((v) => ({ ...v, tavily: { product: null, competitors: null, trends: null, pricing: null, community: null } }));
-
-    // Build cumulative feed for the URL-stage shortcut too.
-    const fl: FeedMessage[] = [];
-    if (stage === "r1") fl.push(...feedByRound[1]);
-    else if (stage === "r2") fl.push(...feedByRound[1], ...feedByRound[2]);
-    else if (stage === "r3" || stage === "winner")
-      fl.push(...feedByRound[1], ...feedByRound[2], ...feedByRound[3]);
-    if (fl.length > 0) {
-      setTimeout(() => setView((v) => ({ ...v, feed: fl })), 80);
-    }
-
-    const select = params.get("select");
-    if (select) {
-      setTimeout(() => setView((v) => ({ ...v, selectedAgentId: select })), 50);
-    }
-  }, []);
-
   const reset = useCallback(() => {
     setView(initial);
   }, []);
@@ -378,7 +424,7 @@ export function useSession() {
     const setup: LaunchSetupValues =
       typeof setupOrUrl === "string" || setupOrUrl == null
         ? {
-            productUrl: typeof setupOrUrl === "string" ? setupOrUrl : "https://ouraring.com",
+            productUrl: typeof setupOrUrl === "string" ? setupOrUrl : "",
             testType: "marketing_message",
             productNote: "",
             targetMarket: "",
@@ -394,14 +440,14 @@ export function useSession() {
       signals: [],
       isWorking: true,
       currentRound: 0,
-      session: buildFallbackSession(),
+      session: buildEmptySession(),
       feed: [],
       tavily: { product: null, competitors: null, trends: null, pricing: null, community: null },
     }));
 
     const headers = { "Content-Type": "application/json" };
     const body = JSON.stringify({
-      productUrl: setup.productUrl || "https://ouraring.com",
+      productUrl: setup.productUrl,
       platform: setup.platform,
       testType: setup.testType,
       productNote: setup.productNote,
@@ -415,11 +461,11 @@ export function useSession() {
       const res = await fetch("/api/run", { method: "POST", headers, body });
 
       if (!res.body) {
-        // Fallback: no streaming support — treat as done with fallback session
         setView((v) => ({
           ...v,
-          stage: "tribes_ready",
+          stage: "idle",
           isWorking: false,
+          signals: ["The server did not return a simulation stream."],
         }));
         return;
       }
@@ -503,6 +549,17 @@ export function useSession() {
             case "initialAssets":
               acc.initialAssets = parsed as import("./types").LaunchAsset[];
               break;
+            case "error":
+              setView((v) => ({
+                ...v,
+                isWorking: false,
+                signals: [
+                  typeof parsed === "object" && parsed && "message" in parsed
+                    ? String((parsed as { message?: unknown }).message)
+                    : "Simulation failed.",
+                ],
+              }));
+              break;
             case "done":
               // Commit accumulated session state
               setView((v) => {
@@ -519,10 +576,10 @@ export function useSession() {
                 const signals = buildSignals(finalSession);
                 return {
                   ...v,
-                  stage: "tribes_ready",
+                  stage: tribes.length === 7 ? "tribes_ready" : "idle",
                   isWorking: false,
                   session: finalSession,
-                  signals: signals.length ? signals : buildSignals(buildFallbackSession()),
+                  signals: signals.length ? signals : v.signals,
                 };
               });
               break;
@@ -546,19 +603,19 @@ export function useSession() {
           const signals = buildSignals(finalSession);
           return {
             ...v,
-            stage: "tribes_ready",
+            stage: tribes.length === 7 ? "tribes_ready" : "idle",
             isWorking: false,
             session: finalSession,
-            signals: signals.length ? signals : buildSignals(buildFallbackSession()),
+            signals: signals.length ? signals : v.signals,
           };
         });
       }
     } catch {
-      // Network failure — fall through to tribes_ready with fallback data
       setView((v) => ({
         ...v,
-        stage: "tribes_ready",
+        stage: "idle",
         isWorking: false,
+        signals: ["Network error while starting the simulation."],
       }));
     }
 
@@ -661,7 +718,7 @@ export function useSession() {
                 tribeId: string;
                 oldHook: string;
                 newHook: string;
-                newImageUrl: string;
+                newImageUrl?: string | null;
               } | null;
               if (!data) return;
               setView((v) => ({
@@ -674,7 +731,12 @@ export function useSession() {
                   ...v.session,
                   assets: v.session.assets.map((a) =>
                     a.tribeId === data.tribeId
-                      ? { ...a, hook: data.newHook, previousHook: data.oldHook, creativeUrl: data.newImageUrl }
+                      ? {
+                          ...a,
+                          hook: data.newHook,
+                          previousHook: data.oldHook,
+                          creativeUrl: data.newImageUrl || a.creativeUrl,
+                        }
                       : a,
                   ),
                 },
@@ -709,20 +771,29 @@ export function useSession() {
       .then((r) => (r.ok ? r.json() : null))
       .catch(() => null);
 
-    const fallbackRoundKey = (round >= 3 ? 3 : round) as 1 | 2 | 3;
-    const updatedAssets = Array.isArray(apiResult?.updatedAssets)
+    if (!apiResult?.roundResult || !Array.isArray(apiResult?.updatedAgents)) {
+      setView((v) => ({
+        ...v,
+        isWorking: false,
+        feed: [
+          ...v.feed,
+          {
+            id: `round-${round}-error`,
+            agentName: "Crucible",
+            text: "Round simulation failed. Check the server logs and API keys, then try again.",
+            type: "protest",
+            round,
+          },
+        ],
+      }));
+      return;
+    }
+
+    const updatedAssets = Array.isArray(apiResult.updatedAssets)
       ? apiResult.updatedAssets
-      : assetsByRound[fallbackRoundKey].map((a) => ({ ...a }));
-    const roundResult = apiResult?.roundResult ?? {
-      ...roundResults[fallbackRoundKey - 1],
-      round,
-    };
-    const finalAgents = Array.isArray(apiResult?.updatedAgents)
-      ? apiResult.updatedAgents
-      : applyRoundState(
-          fallbackRoundKey,
-          snapshot?.agents?.length === 70 ? snapshot.agents : baseAgents,
-        );
+      : snapshot.assets;
+    const roundResult = apiResult.roundResult as RoundResultType;
+    const finalAgents = apiResult.updatedAgents as BuyerAgent[];
 
     // Commit assets, stage, and round result immediately so the right panel updates.
     setView((v) => ({
@@ -748,12 +819,7 @@ export function useSession() {
       [revealOrder[i], revealOrder[j]] = [revealOrder[j], revealOrder[i]];
     }
 
-    // Choose between hand-authored Oura feed (deterministic demo) and a live feed
-    // derived from the actual tribe scores + buyers when running against a real URL.
-    const isOuraFallback = snapshot.brief.source === "fallback" && round >= 1 && round <= 3;
-    const roundFeed: FeedMessage[] = isOuraFallback
-      ? feedByRound[round as 1 | 2 | 3] ?? []
-      : buildLiveFeed(roundResult, snapshot.tribes ?? [], finalAgents);
+    const roundFeed: FeedMessage[] = buildLiveFeed(roundResult, snapshot.tribes ?? [], finalAgents);
     const totalReveals = revealOrder.length;
     // Drip a feed message roughly every 1/N of the way through the reveal.
     const feedDripStep = roundFeed.length > 0 ? Math.max(1, Math.floor(totalReveals / roundFeed.length)) : Infinity;

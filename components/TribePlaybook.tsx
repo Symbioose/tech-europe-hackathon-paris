@@ -3,12 +3,14 @@
 import { motion } from "framer-motion";
 import clsx from "clsx";
 import type { BuyerAgent, Tribe, TribeRecommendation, TribeScore, TribeVerdict } from "@/lib/types";
+import { marketSignalScore, messageMarketFit, objectionIntensity, signalStrengthLabel } from "@/lib/market-score";
 
 type Props = {
   tribes: Tribe[];
   scores: TribeScore[];
   breakdown?: TribeRecommendation[];
   agents: BuyerAgent[];
+  sourceAnchors?: Record<string, string[]>;
   onAskBuyer?: (agentId: string, question: string) => void;
 };
 
@@ -36,7 +38,7 @@ const VERDICT_STYLE: Record<TribeVerdict, { tag: string; bar: string; label: str
   },
 };
 
-export function TribePlaybook({ tribes, scores, breakdown, agents, onAskBuyer }: Props) {
+export function TribePlaybook({ tribes, scores, breakdown, agents, sourceAnchors = {}, onAskBuyer }: Props) {
   const tribeMap = new Map(tribes.map((t) => [t.id, t]));
   const scoreMap = new Map(scores.map((s) => [s.tribeId, s]));
   const agentsByTribe = new Map<string, BuyerAgent[]>();
@@ -57,9 +59,13 @@ export function TribePlaybook({ tribes, scores, breakdown, agents, onAskBuyer }:
     );
   }
 
-  // Sort so strong → refine → avoid
+  // Sort so strong signal → refine → avoid
   const order: Record<TribeVerdict, number> = { strong: 0, refine: 1, avoid: 2 };
-  const sorted = [...breakdown].sort((a, b) => order[a.verdict] - order[b.verdict]);
+  const sorted = [...breakdown].sort((a, b) => {
+    const verdictDelta = order[a.verdict] - order[b.verdict];
+    if (verdictDelta !== 0) return verdictDelta;
+    return marketSignalScore(scoreMap.get(b.tribeId)) - marketSignalScore(scoreMap.get(a.tribeId));
+  });
 
   return (
     <div className="space-y-3">
@@ -79,6 +85,8 @@ export function TribePlaybook({ tribes, scores, breakdown, agents, onAskBuyer }:
           tribeAgents.find((a) => a.isHero) ??
           tribeAgents.find((a) => a.state === "converted") ??
           tribeAgents[0];
+        const signal = marketSignalScore(score);
+        const anchors = sourceAnchors[rec.tribeId] ?? [];
 
         return (
           <motion.div
@@ -119,27 +127,46 @@ export function TribePlaybook({ tribes, scores, breakdown, agents, onAskBuyer }:
                 </div>
               </div>
 
-              {/* Stats row */}
+              {/* Signal row */}
               {score && (
                 <div className="grid grid-cols-3 gap-2 text-[10px]">
-                  <Stat label="Converted" value={`${Math.round(score.conversionRate * 100)}%`} color="#3affe9" />
-                  <Stat
-                    label="Curious"
-                    value={`${Math.round(Math.max(0, score.clickRate - score.conversionRate) * 100)}%`}
-                    color="#ffcf6b"
-                  />
-                  <Stat label="Repelled" value={`${Math.round(score.repelledRate * 100)}%`} color="#ff5470" />
+                  <Stat label="Signal" value={`${signal}/100`} color="#3affe9" />
+                  <Stat label="Fit" value={`${messageMarketFit(score)}/100`} color="#ffcf6b" />
+                  <Stat label="Objection" value={`${objectionIntensity(score)}/100`} color="#ff5470" />
                 </div>
               )}
 
               {/* Justification */}
               <div className="text-[10px] uppercase tracking-[0.16em] text-ink-400">
-                Target this population?{" "}
+                Decision:{" "}
                 <span style={{ color: style.text }} className="font-semibold">
-                  {rec.verdict === "strong" ? "Yes" : rec.verdict === "refine" ? "Maybe" : "Not yet"}
+                  {rec.verdict === "strong" ? "Target" : rec.verdict === "refine" ? "Retest" : "Avoid"}
                 </span>
+                {score ? (
+                  <span className="ml-2 text-ink-500">
+                    · signal strength {signalStrengthLabel(signal)}
+                  </span>
+                ) : null}
               </div>
               <p className="text-[12px] leading-snug text-ink-200">{rec.justification}</p>
+
+              {anchors.length > 0 && (
+                <div className="rounded-lg border border-white/8 bg-white/[0.025] px-3 py-2">
+                  <div className="text-[9px] uppercase tracking-[0.16em] text-ink-500">
+                    Created from Tavily signals
+                  </div>
+                  <div className="mt-1 flex flex-wrap gap-1.5">
+                    {anchors.map((anchor) => (
+                      <span
+                        key={anchor}
+                        className="max-w-full truncate rounded-md border border-plasma/20 bg-plasma/[0.05] px-2 py-1 text-[10.5px] text-ink-200"
+                      >
+                        {anchor}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <Divider />
 

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { TribeCard } from "./TribeCard";
 import type { BuyerAgent, Tribe, TribeScore, LaunchAsset } from "@/lib/types";
+import { marketSignalScore } from "@/lib/market-score";
 
 type Props = {
   tribes: Tribe[];
@@ -33,8 +34,8 @@ export function TribeColumn({
     if (scores.length === 0) return tribes;
     const rank = new Map(scores.map((score, index) => [score.tribeId, index]));
     return [...tribes].sort((a, b) => {
-      const aScore = scoreMap.get(a.id)?.conversionRate ?? -1;
-      const bScore = scoreMap.get(b.id)?.conversionRate ?? -1;
+      const aScore = marketSignalScore(scoreMap.get(a.id));
+      const bScore = marketSignalScore(scoreMap.get(b.id));
       if (bScore !== aScore) return bScore - aScore;
       return (rank.get(a.id) ?? 999) - (rank.get(b.id) ?? 999);
     });

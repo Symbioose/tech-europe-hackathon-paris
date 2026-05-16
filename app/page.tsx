@@ -15,6 +15,8 @@ import {
   type TestType,
 } from "@/components/LaunchSetup";
 import type { Platform } from "@/lib/types";
+import type { SavedRunSummary } from "@/lib/types";
+import { marketSignalScore } from "@/lib/market-score";
 
 const testTypeLabel: Record<TestType, string> = {
   customer_discovery: "Customer discovery",
@@ -26,7 +28,7 @@ const testTypeLabel: Record<TestType, string> = {
 
 const defaultSetup: LaunchSetupValues = {
   testType: "marketing_message",
-  productUrl: "https://fal.ai",
+  productUrl: "",
   productNote: "",
   targetMarket: "",
   platform: "auto",
@@ -34,10 +36,13 @@ const defaultSetup: LaunchSetupValues = {
   assetText: "",
 };
 
+const SAVED_RUNS_KEY = "crucible.savedRuns.v1";
+
 export default function Page() {
   const { view, actions } = useSession();
   const [setup, setSetup] = useState<LaunchSetupValues>(defaultSetup);
   const [hasLaunched, setHasLaunched] = useState(false);
+  const [savedRuns, setSavedRuns] = useState<SavedRunSummary[]>([]);
   const {
     stage,
     session,
@@ -56,7 +61,45 @@ export default function Page() {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
     if (params.has("stage")) setHasLaunched(true);
+    const raw = window.localStorage.getItem(SAVED_RUNS_KEY);
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw) as SavedRunSummary[];
+        if (Array.isArray(parsed)) setSavedRuns(parsed);
+      } catch {
+        window.localStorage.removeItem(SAVED_RUNS_KEY);
+      }
+    }
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (stage !== "winner_ready" || !session.recommendation || !session.rounds.length) return;
+
+    const lastRound = session.rounds[session.rounds.length - 1];
+    const winnerScore = lastRound.tribeScores.find(
+      (score) => score.tribeId === session.recommendation?.winningTribeId,
+    );
+    const winningTribe = session.tribes.find(
+      (tribe) => tribe.id === session.recommendation?.winningTribeId,
+    );
+    const summary: SavedRunSummary = {
+      id: `${session.brief.url}-${lastRound.round}-${session.recommendation.winningTribeId}-${session.recommendation.winningHook}`,
+      createdAt: new Date().toISOString(),
+      productName: session.brief.name || setup.productUrl,
+      productUrl: session.brief.url || setup.productUrl,
+      winningTribe: winningTribe?.name ?? session.recommendation.winningTribeId,
+      winningHook: session.recommendation.winningHook,
+      marketSignalScore: marketSignalScore(winnerScore),
+      rounds: session.rounds.length,
+    };
+
+    setSavedRuns((current) => {
+      const next = [summary, ...current.filter((run) => run.id !== summary.id)].slice(0, 12);
+      window.localStorage.setItem(SAVED_RUNS_KEY, JSON.stringify(next));
+      return next;
+    });
+  }, [session, setup.productUrl, stage]);
 
   const selectedAgent = useMemo(
     () => session.agents.find((a) => a.id === selectedAgentId) ?? null,
@@ -158,6 +201,7 @@ export default function Page() {
             rounds={session.rounds}
             tavily={tavily}
             videoUrl={videoUrl}
+            savedRuns={savedRuns}
             onAskBuyer={actions.askBuyer}
           />
         ) : (

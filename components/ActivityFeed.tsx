@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import type { FeedMessage } from "@/lib/demo/feed";
+import type { FeedMessage } from "@/lib/feed";
 import type { Tribe } from "@/lib/types";
 
 type Props = {

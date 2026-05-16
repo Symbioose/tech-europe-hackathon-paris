@@ -1,16 +1,4 @@
-import type { BuyerAgent, AgentState, RoundResult } from "./types";
-import { applyRoundState, roundResults } from "./demo-data";
-
-export function statesForRound(
-  round: 1 | 2 | 3,
-  agents: BuyerAgent[],
-): BuyerAgent[] {
-  return applyRoundState(round, agents);
-}
-
-export function roundResultFor(round: 1 | 2 | 3): RoundResult {
-  return roundResults[round - 1];
-}
+import type { AgentState } from "./types";
 
 export function stateColor(state: AgentState): {
   fill: string;

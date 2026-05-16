@@ -40,7 +40,7 @@ const run = async () => {
   await page.screenshot({ path: "/tmp/smk-3-winner.png" });
   console.log("  ✓ 4 blocks + confidence badge present");
 
-  // 4. Buyer drawer opens with mic button (or text-input fallback)
+  // 4. Buyer drawer opens with mic button (or text input)
   console.log("→ open hero buyer drawer");
   await page.goto(`${BASE}/?stage=winner&select=tribe_2_a1`, { waitUntil: "domcontentloaded" });
   await wait(1200);

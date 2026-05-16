@@ -82,10 +82,10 @@ function deterministicBreakdown(
       priority: priorityFor(conv),
       justification:
         verdict === "strong"
-          ? `${convPct}% converted, ${clickPct}% clicked — strongest signal of the cohort.`
+          ? `Strongest market signal: ${convPct}/100 purchase intent proxy, ${clickPct}/100 attention proxy.`
           : verdict === "refine"
-            ? `${convPct}% converted but ${repPct}% bounced — message needs sharpening.`
-            : `Only ${convPct}% converted, ${repPct}% repelled — wrong audience for this hook.`,
+            ? `Directional signal, but objection intensity is ${repPct}/100. Retest with sharper proof.`
+            : `Weak signal and objection intensity ${repPct}/100. Avoid as the first segment.`,
       whyReacted:
         score?.representativeFeedback ||
         `${tribe.name} reacted to the hook through the lens of ${tribe.mainPain}.`,
@@ -162,7 +162,7 @@ async function openaiBreakdown(
   "tribeId": string (must match input id exactly),
   "verdict": "strong" | "refine" | "avoid",
   "priority": "High" | "Medium" | "Low",
-  "justification": string (1 short sentence quoting the actual stats),
+  "justification": string (1 short sentence quoting signal, fit, or objection intensity; do not call it real conversion),
   "whyReacted": string (1 sentence — why they did/didn't bite),
   "whatMotivates": string (1 sentence),
   "whatBlocks": string (1 short sentence),
@@ -176,7 +176,7 @@ async function openaiBreakdown(
   "objectionToHandle": string (1 short sentence),
   "suggestedQuestions": [<exactly 3 strings>] — concrete questions a founder should ask a buyer from THIS tribe to clarify the result (e.g. "Which line of the hook landed first?", "What proof would have made you click?", "What word in the hook felt off?"). Each question must be short, specific, and impossible to answer with a yes/no.
 }
-Be CONCRETE and SPECIFIC to each tribe — no generic copy. Use the data given. Verdict must reflect conversionRate: strong >=25%, refine 12-24%, avoid <12%.`;
+Be CONCRETE and SPECIFIC to each tribe — no generic copy. Use the data given. Treat conversionRate as a synthetic purchase-intent proxy, not real conversion. Verdict must reflect conversionRate: strong >=25%, refine 12-24%, avoid <12%.`;
 
   const user = `Product: ${brief?.name ?? "Product"} — ${brief?.keyPromise ?? ""}
 Market: ${brief?.market ?? "—"}
@@ -241,7 +241,7 @@ export async function POST(req: Request) {
   const deterministic = deterministicBreakdown(tribes, assets, lastRound);
 
   // Prefer OpenAI output (richer + specific to the run). Fall back to deterministic
-  // if OpenAI is missing, returns garbage, or times out.
+  // if OpenAI is missing, returns invalid JSON, or times out.
   const live = await openaiBreakdown(body.brief, tribes, assets, rounds);
   let breakdown: TribeRecommendation[] = deterministic;
   if (live && live.length > 0) {

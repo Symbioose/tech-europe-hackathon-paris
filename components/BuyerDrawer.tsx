@@ -233,13 +233,13 @@ export function BuyerDrawer({ agent, tribe, onClose, hookSeen, prefilledQuestion
             </div>
             <p className="text-[12.5px] leading-relaxed text-ink-200">
               {agent.state === "converted" &&
-                `${agent.name.split(" ")[0]} converted because the hook named a specific moment they recognized — and the landing page paid it off in 30 seconds.`}
+                `${agent.name.split(" ")[0]} showed strong purchase intent because the hook named a specific moment they recognized.`}
               {agent.state === "curious" &&
                 `${agent.name.split(" ")[0]} clicked but didn't buy. The hook landed, but the page felt heavier than the promise.`}
               {agent.state === "seen" &&
                 `${agent.name.split(" ")[0]} scrolled past. The hook didn't name a pain they currently feel.`}
               {agent.state === "repelled" &&
-                `${agent.name.split(" ")[0]} bounced. Either the format doesn't fit their context (e.g. a ring under a barbell) or the message felt like another wearable subscription.`}
+                `${agent.name.split(" ")[0]} bounced. Either the format doesn't fit their context or the promise felt too broad to trust.`}
               {agent.state === "idle" &&
                 `${agent.name.split(" ")[0]} hasn't been targeted yet — they're in the cohort waiting on the next campaign.`}
             </p>
@@ -281,7 +281,7 @@ export function BuyerDrawer({ agent, tribe, onClose, hookSeen, prefilledQuestion
                 </div>
               )}
 
-              {/* Text fallback — always visible as backup */}
+              {/* Text input stays visible as backup when voice input is unavailable. */}
               <input
                 type="text"
                 value={question}

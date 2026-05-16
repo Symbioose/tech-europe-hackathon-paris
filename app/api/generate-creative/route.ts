@@ -38,7 +38,6 @@ export async function POST(req: NextRequest) {
   const {
     productName = "Product",
     tribeName = "Audience",
-    tribeIndex = 0,
     hook = "",
     assetMode = "generate",
   } = body as {
@@ -62,6 +61,5 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ imageUrl, source: "fal" });
   }
 
-  const fallbackUrl = `/demo/creative-${tribeIndex + 1}.png`;
-  return NextResponse.json({ imageUrl: fallbackUrl, source: "fallback" });
+  return NextResponse.json({ imageUrl: null, source: "unavailable" });
 }

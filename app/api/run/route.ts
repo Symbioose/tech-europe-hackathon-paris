@@ -1,4 +1,4 @@
-import { ouraBrief, tribes, baseAgents, assetsRound1 } from "@/lib/demo-data";
+import { buildAgentsForTribes } from "@/lib/agents";
 import {
   extractPage,
   searchCommunity,
@@ -7,9 +7,8 @@ import {
   searchTrends,
 } from "@/lib/integrations/tavily";
 import { summarizeProduct, generateTribes, generateAssets } from "@/lib/integrations/openai";
-import type { TavilyResult } from "@/lib/integrations/tavily";
 import type { ProductBrief } from "@/lib/types";
-import { buildFallbackAssetsForTribes } from "@/lib/fallback-assets";
+import { buildAssetsForTribes } from "@/lib/launch-assets";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -25,15 +24,6 @@ function inferProductName(url: string): string {
       .join(" ");
   } catch {
     return "the product";
-  }
-}
-
-function isFalUrl(url: string | undefined) {
-  if (!url) return false;
-  try {
-    return /(^|\.)fal\.ai$/i.test(new URL(url).hostname.replace(/^www\./, ""));
-  } catch {
-    return /fal\.ai/i.test(url);
   }
 }
 
@@ -65,28 +55,9 @@ export async function POST(req: Request) {
       }
 
       try {
-        // ── Oura / demo fast-path ────────────────────────────────────────────
-        if (!url || /ouraring|oura/i.test(url) || process.env.CRUCIBLE_DEMO_MODE === "1") {
-          const stubProduct: TavilyResult[] = [
-            {
-              title: "Oura Ring — Smart Health Ring",
-              url: "https://ouraring.com",
-              snippet:
-                "Oura Ring tracks sleep, readiness, and activity 24/7. Worn on your finger, it's the most accurate wearable health monitor.",
-              favicon: "https://www.google.com/s2/favicons?domain=ouraring.com&sz=32",
-            },
-          ];
-          emit("tavily:product", stubProduct);
-          emit("brief", ouraBrief);
-          emit("tavily:competitors", []);
-          emit("tavily:trends", []);
-          emit("tavily:pricing", []);
-          emit("tavily:community", []);
-          emit("tribes:all", tribes);
-          emit("agents", baseAgents);
-          emit("initialAssets", assetsRound1);
-          emit("done", { mode: "fallback" });
-          controller.close();
+        if (!url) {
+          emit("error", { message: "A product URL is required." });
+          emit("done", { mode: "error" });
           return;
         }
 
@@ -94,8 +65,7 @@ export async function POST(req: Request) {
         const productResults = await race(extractPage(url), 8000);
         emit("tavily:product", productResults ?? []);
 
-        const falDemo = isFalUrl(url);
-        const productName = falDemo ? "fal.ai" : inferProductName(url);
+        const productName = inferProductName(url);
         const rawSnippet = productResults?.[0]?.snippet ?? "";
 
         // ── Step 2: summarizeProduct ─────────────────────────────────────────
@@ -103,9 +73,6 @@ export async function POST(req: Request) {
 
         const market: string =
           body.targetMarket ||
-          (falDemo
-            ? "B2B AI app builders, creative automation tools, agencies, and growth teams"
-            : "") ||
           (typeof partial?.market === "string" && partial.market) ||
           "Unknown — infer from context";
 
@@ -113,24 +80,15 @@ export async function POST(req: Request) {
           name: productName,
           url,
           oneLiner:
-            falDemo
-              ? "Fast image and video generation API for AI product teams"
-              :
             typeof partial?.oneLiner === "string" && partial.oneLiner
               ? partial.oneLiner
               : `${productName} — product launch`,
           description:
-            falDemo
-              ? "fal.ai gives product teams API access to fast image, video, and generative media models without managing GPU infrastructure."
-              :
             typeof partial?.description === "string" && partial.description
               ? partial.description
               : rawSnippet || `Product at ${url}.`,
           market,
           keyPromise:
-            falDemo
-              ? "Add production-grade image and video generation to your product without managing GPU infrastructure"
-              :
             typeof partial?.keyPromise === "string" && partial.keyPromise
               ? partial.keyPromise
               : "Infer from the page",
@@ -193,9 +151,9 @@ export async function POST(req: Request) {
 
         if (liveTribes && liveTribes.length === 7) {
           emit("tribes:all", liveTribes);
-          emit("agents", baseAgents);
+          emit("agents", buildAgentsForTribes(liveTribes));
 
-          // ── Step 5: generate live assets per tribe (so FAL images use live hooks, not Oura) ──
+          // ── Step 5: generate live assets per tribe ────────────────────────
           const liveAssets = await race(
             generateAssets(briefWithSignals, liveTribes, {
               testType: body.testType,
@@ -209,8 +167,8 @@ export async function POST(req: Request) {
           if (liveAssets && liveAssets.length === 7) {
             const merged = liveTribes.map((tribe) => {
               const live = liveAssets.find((a) => a.tribeId === tribe.id);
-              const fallback = buildFallbackAssetsForTribes(briefWithSignals, [tribe])[0];
-              if (!live) return fallback;
+              const generated = buildAssetsForTribes(briefWithSignals, [tribe])[0];
+              if (!live) return generated;
               return {
                 tribeId: tribe.id,
                 hook: live.hook,
@@ -224,23 +182,19 @@ export async function POST(req: Request) {
             emit("initialAssets", merged);
             emit("done", { mode: "live" });
           } else {
-            // Live tribes but no OpenAI assets: synthesize product-specific assets.
-            // Never attach Oura demo hooks to a live product.
-            emit("initialAssets", buildFallbackAssetsForTribes(briefWithSignals, liveTribes));
-            emit("done", { mode: "live-tribes-fallback-assets" });
+            emit("initialAssets", buildAssetsForTribes(briefWithSignals, liveTribes));
+            emit("done", { mode: "live" });
           }
         } else {
-          emit("tribes:all", tribes);
-          emit("agents", baseAgents);
-          emit("initialAssets", assetsRound1);
-          emit("done", { mode: "fallback-tribes" });
+          emit("error", {
+            message:
+              "Could not generate customer populations. Check OPENAI_API_KEY and try again.",
+          });
+          emit("done", { mode: "error" });
         }
       } catch (err) {
-        // Emit a safe fallback so the client isn't left hanging
-        emit("tribes:all", tribes);
-        emit("agents", baseAgents);
-        emit("initialAssets", assetsRound1);
-        emit("done", { mode: "fallback", error: String(err) });
+        emit("error", { message: String(err) });
+        emit("done", { mode: "error" });
       } finally {
         controller.close();
       }

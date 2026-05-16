@@ -5,6 +5,7 @@ import type { BuyerAgent, Tribe, TribeScore } from "@/lib/types";
 import clsx from "clsx";
 import { stateColor } from "@/lib/simulation";
 import { RegenerationOverlay } from "./RegenerationOverlay";
+import { marketSignalScore } from "@/lib/market-score";
 
 type Props = {
   tribe: Tribe;
@@ -44,7 +45,7 @@ export function TribeCard({
   selectedAgentId,
   onSelectAgent,
 }: Props) {
-  const conversion = score ? Math.round(score.conversionRate * 100) : 0;
+  const signal = marketSignalScore(score);
   const expandable = (agents?.length ?? 0) > 0 && !!onToggleExpand;
   return (
     <motion.div
@@ -117,13 +118,13 @@ export function TribeCard({
       <div className="mt-3 flex items-end justify-between gap-2">
         <div>
           <div className="text-[10px] uppercase tracking-[0.14em] text-ink-400">
-            Conversion
+            Market signal
           </div>
           <div
             className="text-xl font-semibold tabular-nums"
-            style={{ color: conversion >= 30 ? "#3affe9" : conversion >= 15 ? "#ffcf6b" : "#e9ecf6" }}
+            style={{ color: signal >= 58 ? "#3affe9" : signal >= 42 ? "#ffcf6b" : "#e9ecf6" }}
           >
-            {conversion}%
+            {signal}
           </div>
         </div>
         <div className="flex-1 max-w-[110px] h-1.5 rounded-full bg-ink-700/80 overflow-hidden">
@@ -131,7 +132,7 @@ export function TribeCard({
             className="h-full rounded-full"
             style={{ background: tribe.accent }}
             initial={{ width: 0 }}
-            animate={{ width: `${Math.min(100, conversion)}%` }}
+            animate={{ width: `${Math.min(100, signal)}%` }}
             transition={{ duration: 0.55, ease: "easeOut" }}
           />
         </div>

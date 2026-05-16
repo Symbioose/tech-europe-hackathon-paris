@@ -9,7 +9,7 @@ export type ProductBrief = {
   keyPromise: string;
   competitorSignals: string[];
   trendSignals: string[];
-  source: "tavily" | "fallback";
+  source: "tavily" | "manual";
 };
 
 export type Tribe = {
@@ -113,6 +113,27 @@ export type TribeRecommendation = {
   suggestedQuestions: string[];
 };
 
+export type ValidationPlan = {
+  interviewCount: number;
+  discoveryQuestions: string[];
+  outboundMessages: string[];
+  landingPageAngles: string[];
+  adTests: string[];
+  goCriteria: string[];
+  noGoCriteria: string[];
+};
+
+export type LaunchActionPlan = {
+  targetFirst: string;
+  useHook: string;
+  avoidObjection: string;
+  validateWith: string;
+  confidenceLevel: "Low" | "Medium" | "High";
+  confidenceReason: string;
+  next48Hours: string[];
+  validationPlan: ValidationPlan;
+};
+
 export type Recommendation = {
   winningTribeId: string;
   winningHook: string;
@@ -124,6 +145,18 @@ export type Recommendation = {
   videoUrl?: string;
   ranker: "deterministic" | "live";
   tribeBreakdown?: TribeRecommendation[];
+  actionPlan?: LaunchActionPlan;
+};
+
+export type SavedRunSummary = {
+  id: string;
+  createdAt: string;
+  productName: string;
+  productUrl: string;
+  winningTribe: string;
+  winningHook: string;
+  marketSignalScore: number;
+  rounds: number;
 };
 
 export type Session = {

@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import type { AppStage, LaunchAsset, RoundResult, Tribe, Recommendation } from "@/lib/types";
 import type { TavilyState } from "@/lib/session";
 import { TavilyOrchestrator } from "@/components/TavilyOrchestrator";
+import { RecommendationFourBlocks } from "@/components/RecommendationFourBlocks";
 import clsx from "clsx";
 
 type Props = {
@@ -37,7 +38,6 @@ export function RightPanel({
 }: Props) {
   const overall = rounds[rounds.length - 1]?.overallConversion ?? 0;
   const tribeMap = new Map(tribes.map((t) => [t.id, t]));
-  const winningTribe = recommendation ? tribeMap.get(recommendation.winningTribeId) : undefined;
 
   // Find which asset matches the highlighted tribe for the current round.
   const focusTribeId =
@@ -121,20 +121,18 @@ export function RightPanel({
       <div className="flex-1 overflow-y-auto scroll-thin space-y-3 pr-1 min-h-0">
         {/* Recommendation first when present */}
         <AnimatePresence>
-          {recommendation && winningTribe && (
+          {recommendation && (
             <motion.div
               key="rec-top"
               initial={{ opacity: 0, y: 12, scale: 0.98 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               transition={{ duration: 0.5 }}
             >
-              <RecommendationCard
-                rec={recommendation}
-                winningTribeName={winningTribe.name}
+              <RecommendationFourBlocks
+                recommendation={recommendation}
+                winningTribe={tribes.find((t) => t.id === recommendation.winningTribeId)}
                 videoUrl={videoUrl}
-                recommendationCreativeUrl={
-                  assets.find((a) => a.tribeId === recommendation.winningTribeId)?.creativeUrl
-                }
+                creativeUrl={assets.find((a) => a.tribeId === recommendation.winningTribeId)?.creativeUrl}
               />
             </motion.div>
           )}
@@ -370,59 +368,3 @@ function SignalsLoading() {
   );
 }
 
-function RecommendationCard({
-  rec,
-  winningTribeName,
-  videoUrl,
-  recommendationCreativeUrl,
-}: {
-  rec: Recommendation;
-  winningTribeName: string;
-  videoUrl?: string;
-  recommendationCreativeUrl?: string;
-}) {
-  return (
-    <div className="rounded-xl border border-plasma/40 bg-gradient-to-br from-plasma/5 via-ink-850 to-flame-500/10 p-4">
-      {videoUrl ? (
-        <video
-          src={videoUrl}
-          autoPlay
-          muted
-          loop
-          playsInline
-          className="w-full rounded-lg border border-white/10 mb-3"
-        />
-      ) : recommendationCreativeUrl ? (
-        <img
-          src={recommendationCreativeUrl}
-          alt="Winning creative"
-          className="w-full rounded-lg border border-white/10 mb-3 ken-burns"
-        />
-      ) : null}
-      <div className="flex items-center gap-2 mb-2.5">
-        <div className="text-[10px] uppercase tracking-[0.18em] text-plasma">Launch decision</div>
-        <div className="h-px flex-1 bg-plasma/20" />
-        <span className="text-[9px] uppercase tracking-[0.18em] text-ink-400 border border-ink-600 px-1.5 py-0.5 rounded">
-          {rec.ranker === "live" ? "Live ranking" : "Deterministic ranking"}
-        </span>
-      </div>
-      <div className="text-[13px] text-ink-50 font-semibold leading-snug">
-        Target: <span className="text-plasma">{winningTribeName}</span>
-      </div>
-      <div className="mt-2 text-[12.5px] text-ink-200 leading-snug italic">
-        "{rec.winningHook}"
-      </div>
-      <div className="mt-3 space-y-1.5">
-        <KV k="Page headline" v={rec.landingHeadline} />
-        <KV k="CTA" v={rec.cta} />
-        <KV k="Avoid" v={rec.objectionToAvoid} />
-      </div>
-      <div className="mt-3 pt-3 border-t border-ink-700/50">
-        <div className="text-[10px] uppercase tracking-[0.18em] text-flame-300 mb-1">
-          Next action · tomorrow
-        </div>
-        <p className="text-[12px] text-ink-200 leading-snug">{rec.nextAction}</p>
-      </div>
-    </div>
-  );
-}

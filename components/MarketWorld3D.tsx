@@ -371,7 +371,10 @@ export function MarketWorld3D({
       const rect = renderer.domElement.getBoundingClientRect();
       const w = rect.width;
       const h = rect.height;
-      for (const tribe of tribesRef.current) {
+      // Hide tribe labels until the market is populated — keeps the live wait
+      // honest (no Oura labels visible while we're calling OpenAI for Linear/etc).
+      const showTribeLabels = list.length > 0;
+      for (const tribe of showTribeLabels ? tribesRef.current : []) {
         const c = tribeCenters.get(tribe.id);
         if (!c) continue;
         screenProjector.set(c.x, 8.5, c.z).project(camera);

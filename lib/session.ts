@@ -133,28 +133,70 @@ export function useSession() {
           .catch(() => null)
       : Promise.resolve(null);
 
-    // Stream the visible Tavily-style signals first so the panel feels alive
-    // while OpenAI/Tavily run server-side.
     for (let i = 0; i < TAVILY_SIGNALS.length; i++) {
       await delay(360);
       setView((v) => ({ ...v, signals: TAVILY_SIGNALS.slice(0, i + 1) }));
     }
 
-    // For non-Oura URLs we expect to wait on OpenAI tribes; show a "generating"
-    // hint and extend the patience window. For Oura the API returns instantly
-    // and the previous 1.5s floor is plenty.
     if (!isOura) {
-      setView((v) => ({
-        ...v,
-        signals: [...v.signals, "Generating tribes from the live product page…"],
-      }));
+      // Visible progress while waiting on Tavily + OpenAI (12-20s typical).
+      const progressMessages = [
+        "Calling Tavily for competitor + viral signals…",
+        "Reading the live product page…",
+        "Asking OpenAI for 7 customer tribes from this market…",
+        "Drafting tribe profiles…",
+        "Finalizing tribes — almost there…",
+      ];
+      let progressIdx = 0;
+      const progressTimer = setInterval(() => {
+        const msg = progressMessages[progressIdx % progressMessages.length];
+        progressIdx++;
+        setView((v) => ({
+          ...v,
+          signals: [
+            ...v.signals.filter((s) => !s.startsWith("⏳")),
+            `⏳ ${msg}`,
+          ],
+        }));
+      }, 2200);
+
+      const live = await Promise.race([
+        livePromise,
+        new Promise<null>((r) => setTimeout(() => r(null), 35000)),
+      ]);
+
+      clearInterval(progressTimer);
+
+      setView((v) => {
+        const next: ViewState = {
+          ...v,
+          stage: "tribes_ready",
+          isWorking: false,
+          signals: v.signals.filter((s) => !s.startsWith("⏳")),
+        };
+        if (
+          live &&
+          live.mode === "live" &&
+          Array.isArray(live.tribes) &&
+          live.tribes.length === 7
+        ) {
+          next.session = {
+            ...v.session,
+            brief: live.brief ?? v.session.brief,
+            tribes: live.tribes,
+          };
+          if (Array.isArray(live.brief?.trendSignals) && live.brief.trendSignals.length > 0) {
+            next.signals = [...next.signals, ...live.brief.trendSignals.slice(0, 3)];
+          }
+        }
+        return next;
+      });
+      return;
     }
 
     const live = await Promise.race([
       livePromise,
-      new Promise<null>((r) =>
-        setTimeout(() => r(null), isOura ? 1500 : 30000),
-      ),
+      new Promise<null>((r) => setTimeout(() => r(null), 1500)),
     ]);
 
     setView((v) => {

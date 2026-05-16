@@ -28,7 +28,17 @@ export function TribeColumn({
   visible,
   regenState,
 }: Props) {
-  const scoreMap = new Map(scores.map((s) => [s.tribeId, s]));
+  const scoreMap = useMemo(() => new Map(scores.map((s) => [s.tribeId, s])), [scores]);
+  const sortedTribes = useMemo(() => {
+    if (scores.length === 0) return tribes;
+    const rank = new Map(scores.map((score, index) => [score.tribeId, index]));
+    return [...tribes].sort((a, b) => {
+      const aScore = scoreMap.get(a.id)?.conversionRate ?? -1;
+      const bScore = scoreMap.get(b.id)?.conversionRate ?? -1;
+      if (bScore !== aScore) return bScore - aScore;
+      return (rank.get(a.id) ?? 999) - (rank.get(b.id) ?? 999);
+    });
+  }, [tribes, scores, scoreMap]);
   const agentsByTribe = useMemo(() => {
     const map = new Map<string, BuyerAgent[]>();
     for (const a of agents) {
@@ -58,7 +68,7 @@ export function TribeColumn({
       </div>
       <div className="flex-1 overflow-y-auto scroll-thin pr-1 space-y-2.5">
         {visible
-          ? tribes.map((t, i) => (
+          ? sortedTribes.map((t, i) => (
               <TribeCard
                 key={t.id}
                 tribe={t}

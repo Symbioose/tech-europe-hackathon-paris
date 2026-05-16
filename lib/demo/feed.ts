@@ -8,7 +8,7 @@ export type FeedMessage = {
   agentRole?: string;
   text: string;
   type: FeedMessageType;
-  round: 1 | 2 | 3;
+  round: number;
 };
 
 export const feedByRound: Record<1 | 2 | 3, FeedMessage[]> = {

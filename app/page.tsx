@@ -95,17 +95,15 @@ export default function Page() {
       actions.runRound(1);
       return;
     }
-    if (stage === "round_1") {
-      actions.runRound(2);
+    if (stage === "round_active") {
+      actions.runRound(currentRound + 1);
       return;
     }
-    if (stage === "round_2") {
-      actions.runRound(3);
-      return;
-    }
-    if (stage === "round_3") {
+  }
+
+  function handleFinish() {
+    if (stage === "round_active") {
       actions.revealRecommendation();
-      return;
     }
   }
 
@@ -134,6 +132,9 @@ export default function Page() {
           tribes={session.tribes}
           scores={lastRoundScores}
           assets={session.assets}
+          agents={session.agents}
+          selectedAgentId={selectedAgentId}
+          onSelectAgent={actions.selectAgent}
           winnerId={winnerId}
           visible={tribesVisible}
           regenState={regenState}
@@ -163,7 +164,7 @@ export default function Page() {
                 ? "Researching market"
                 : stage === "tribes_ready"
                 ? "Awaiting first launch"
-                : `Round ${currentRound} of 3`
+                : `Round ${currentRound}`
             }
           />
 
@@ -177,13 +178,13 @@ export default function Page() {
               </h1>
               <p className="text-ink-300 mt-3 max-w-[520px] leading-relaxed">
                 Crucible builds 7 customer tribes, generates 7 launch campaigns, and runs them
-                through 70 simulated buyers — then learns from failure across 3 rounds and converges
-                on one launch decision.
+                through 70 simulated buyers — then learns from failure round after round until you
+                pick a launch decision.
               </p>
               <div className="mt-4 flex items-center gap-3 text-[12px] text-ink-400">
                 <Pill>7 tribes</Pill>
                 <Pill>70 buyers</Pill>
-                <Pill>3 rounds</Pill>
+                <Pill>Unlimited rounds</Pill>
                 <Pill highlight>1 launch decision</Pill>
               </div>
             </div>
@@ -200,6 +201,7 @@ export default function Page() {
           recommendation={session.recommendation}
           isWorking={isWorking}
           onAdvance={handleAdvance}
+          onFinish={handleFinish}
           onReset={actions.reset}
           tavily={tavily}
           videoUrl={videoUrl}

@@ -15,7 +15,7 @@ import type {
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-const roundNarrative = {
+const roundNarrative: Record<number, Pick<RoundResult, "learning">> = {
   1: {
     learning: "Broad exploration found which pains buyers understood immediately and which claims felt too generic.",
   },
@@ -25,7 +25,12 @@ const roundNarrative = {
   3: {
     learning: "The final round narrowed on the strongest tribe, repeated its exact trigger, and removed the main objection from the path to conversion.",
   },
-} satisfies Record<1 | 2 | 3, Pick<RoundResult, "learning">>;
+};
+
+function learningFor(round: number): string {
+  if (roundNarrative[round]) return roundNarrative[round].learning;
+  return `Round ${round}: sharpened the winning hook further, kept doubling down on what the strongest tribe already validated, and trimmed messages that no longer pulled new buyers.`;
+}
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
@@ -74,9 +79,11 @@ function distributeStates(
   }));
 }
 
-function pickAssets(round: 1 | 2 | 3, incoming?: LaunchAsset[]) {
+function pickAssets(round: number, incoming?: LaunchAsset[]) {
   if (incoming?.length) return incoming;
-  return assetsByRound[round];
+  // assetsByRound only goes up to 3; for higher rounds, reuse the latest variant.
+  const key = (round >= 3 ? 3 : round) as 1 | 2 | 3;
+  return assetsByRound[key];
 }
 
 function reactionToScore(reaction: SimulatedReaction): TribeScore {
@@ -91,10 +98,12 @@ function reactionToScore(reaction: SimulatedReaction): TribeScore {
   };
 }
 
-function fallbackScore(tribe: Tribe, round: 1 | 2 | 3, index: number): TribeScore {
-  const baseByRound = { 1: 0.09, 2: 0.18, 3: 0.31 };
+function fallbackScore(tribe: Tribe, round: number, index: number): TribeScore {
+  const baseByRound: Record<number, number> = { 1: 0.09, 2: 0.18, 3: 0.31 };
+  // Rounds beyond 3 keep climbing slightly but with diminishing returns.
+  const base = baseByRound[round] ?? Math.min(0.55, 0.31 + (round - 3) * 0.04);
   const fit = ((tribe.id.charCodeAt(tribe.id.length - 1) * 7) % 17 - 8) / 100;
-  const conversionRate = clamp(baseByRound[round] + fit - index * 0.006, 0.03, 0.48);
+  const conversionRate = clamp(base + fit - index * 0.006, 0.03, 0.66);
   return {
     tribeId: tribe.id,
     conversionRate,
@@ -108,16 +117,13 @@ function fallbackScore(tribe: Tribe, round: 1 | 2 | 3, index: number): TribeScor
 
 export async function POST(req: Request) {
   const body = (await req.json().catch(() => ({}))) as {
-    round?: 1 | 2 | 3;
+    round?: number;
     brief?: ProductBrief;
     tribes?: Tribe[];
     assets?: LaunchAsset[];
     previousRounds?: RoundResult[];
   };
-  const round = (body?.round ?? 1) as 1 | 2 | 3;
-  if (![1, 2, 3].includes(round)) {
-    return NextResponse.json({ error: "round must be 1 | 2 | 3" }, { status: 400 });
-  }
+  const round = Math.max(1, Math.floor(body?.round ?? 1));
 
   const tribes = Array.isArray(body.tribes) && body.tribes.length === 7 ? body.tribes : [];
   const updatedAssets = pickAssets(round, body.assets);
@@ -125,10 +131,14 @@ export async function POST(req: Request) {
   if (tribes.length !== 7) {
     // No live data → return deterministic fallback so the UI doesn't break.
     const fallbackScores: TribeScore[] = tribes.map((t, i) => fallbackScore(t, round, i));
+    const baselineByRound: Record<number, number> = { 1: 0.09, 2: 0.18, 3: 0.31 };
+    const overallFallback =
+      baselineByRound[round] ?? Math.min(0.55, 0.31 + (round - 3) * 0.04);
+    const fallbackRound = (round >= 3 ? 3 : round) as 1 | 2 | 3;
     const result: RoundResult = {
       round,
-      overallConversion: { 1: 0.09, 2: 0.18, 3: 0.31 }[round],
-      learning: roundNarrative[round].learning,
+      overallConversion: overallFallback,
+      learning: learningFor(round),
       highlights: [],
       failures: [],
       assets: updatedAssets,
@@ -137,7 +147,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       roundResult: result,
       updatedAssets,
-      updatedAgents: applyRoundState(round, baseAgents),
+      updatedAgents: applyRoundState(fallbackRound, baseAgents),
       mode: "no-tribes",
     });
   }
@@ -219,7 +229,7 @@ export async function POST(req: Request) {
   const roundResult: RoundResult = {
     round,
     overallConversion,
-    learning: roundNarrative[round].learning,
+    learning: learningFor(round),
     highlights,
     failures,
     assets: updatedAssets,

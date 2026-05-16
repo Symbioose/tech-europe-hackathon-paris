@@ -175,16 +175,20 @@ export async function simulateTribeReaction(args: {
   brief: ProductBrief;
   tribe: Tribe;
   asset: { hook: string; landingHeadline: string; cta: string };
-  round: 1 | 2 | 3;
+  round: number;
   previousScore?: { conversionRate: number; topObjections: string[] };
 }): Promise<SimulatedReaction | null> {
   const { brief, tribe, asset, round, previousScore } = args;
+  const prevPct = Math.round((previousScore?.conversionRate ?? 0) * 100);
+  const prevObj = previousScore?.topObjections?.[0] ?? "unclear";
   const roundContext =
     round === 1
       ? "Round 1 is the first time this tribe sees ANY campaign for this product. Be cautious — typical first-launch conversion is 3-15%."
       : round === 2
-        ? `Round 2: the marketer rewrote weak hooks based on what failed in Round 1 (this tribe's previous conversion was ${Math.round((previousScore?.conversionRate ?? 0.09) * 100)}% with objection "${previousScore?.topObjections?.[0] ?? "unclear"}"). Conversion can rise if the new hook genuinely addresses the prior failure — otherwise stays flat. Realistic range: 5-30%.`
-        : `Round 3: the marketer sharpened the winning angle (previous conversion ${Math.round((previousScore?.conversionRate ?? 0.18) * 100)}%). If the hook now names a specific moment matching the tribe's trigger, conversion can hit 25-50%. Otherwise plateaus.`;
+        ? `Round 2: the marketer rewrote weak hooks based on what failed in Round 1 (this tribe's previous conversion was ${prevPct || 9}% with objection "${prevObj}"). Conversion can rise if the new hook genuinely addresses the prior failure — otherwise stays flat. Realistic range: 5-30%.`
+        : round === 3
+          ? `Round 3: the marketer sharpened the winning angle (previous conversion ${prevPct || 18}%). If the hook now names a specific moment matching the tribe's trigger, conversion can hit 25-50%. Otherwise plateaus.`
+          : `Round ${round}: the marketer keeps refining the strongest hook (previous conversion ${prevPct}%). Returns diminish — only react more positively if the change is genuinely better, otherwise stay near previous conversion. Realistic ceiling 50-65%.`;
 
   const result = await openaiChat<SimulatedReaction>(
     `You simulate how a specific buyer tribe reacts to a marketing campaign. Be honest and concrete — do NOT inflate numbers. Return strict JSON: {tribeId, conversionRate (0..1), clickRate (0..1, must be >= conversionRate), repelledRate (0..1, max 0.3), topPositiveWords ([3 short phrases]), topObjections ([2-3 short objections]), representativeFeedback (one direct-quote sentence in the buyer's voice, max 25 words)}. ${roundContext}`,

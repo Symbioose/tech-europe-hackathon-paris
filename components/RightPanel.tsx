@@ -11,12 +11,13 @@ type Props = {
   stage: AppStage;
   signals: string[];
   rounds: RoundResult[];
-  currentRound: 0 | 1 | 2 | 3;
+  currentRound: number;
   tribes: Tribe[];
   assets: LaunchAsset[];
   recommendation?: Recommendation;
   isWorking: boolean;
   onAdvance: () => void;
+  onFinish: () => void;
   onReset: () => void;
   tavily: TavilyState;
   videoUrl?: string;
@@ -32,6 +33,7 @@ export function RightPanel({
   recommendation,
   isWorking,
   onAdvance,
+  onFinish,
   onReset,
   tavily,
   videoUrl,
@@ -79,33 +81,41 @@ export function RightPanel({
           <div className="text-right">
             <div className="text-[10px] uppercase tracking-[0.18em] text-ink-400">Round</div>
             <div className="text-2xl font-semibold tabular-nums text-flame-300">
-              {currentRound}/3
+              {currentRound > 0 ? currentRound : "—"}
             </div>
           </div>
         </div>
 
-        <div className="mt-3 flex items-center gap-1.5">
-          {[1, 2, 3].map((n) => {
-            const r = rounds.find((x) => x.round === n);
-            return (
-              <div
-                key={n}
-                className="flex-1 h-1.5 rounded-full bg-ink-700/80 overflow-hidden"
-              >
-                <motion.div
-                  className="h-full"
-                  style={{
-                    background:
-                      n === 3 ? "#3affe9" : n === 2 ? "#ffcf6b" : "#ff7a1a",
-                  }}
-                  initial={{ width: 0 }}
-                  animate={{ width: r ? `${Math.min(100, r.overallConversion * 100 * 3)}%` : "0%" }}
-                  transition={{ duration: 0.55, ease: "easeOut" }}
-                />
-              </div>
-            );
-          })}
-        </div>
+        {rounds.length > 0 && (
+          <div className="mt-3 flex items-center gap-1.5">
+            {rounds
+              .slice()
+              .sort((a, b) => a.round - b.round)
+              .map((r) => {
+                const tone =
+                  r.overallConversion >= 0.3
+                    ? "#3affe9"
+                    : r.overallConversion >= 0.15
+                    ? "#ffcf6b"
+                    : "#ff7a1a";
+                return (
+                  <div
+                    key={r.round}
+                    title={`Round ${r.round} · ${Math.round(r.overallConversion * 100)}%`}
+                    className="flex-1 h-1.5 rounded-full bg-ink-700/80 overflow-hidden"
+                  >
+                    <motion.div
+                      className="h-full"
+                      style={{ background: tone }}
+                      initial={{ width: 0 }}
+                      animate={{ width: `${Math.min(100, r.overallConversion * 100 * 3)}%` }}
+                      transition={{ duration: 0.55, ease: "easeOut" }}
+                    />
+                  </div>
+                );
+              })}
+          </div>
+        )}
       </div>
 
       {/* Action button */}
@@ -114,6 +124,7 @@ export function RightPanel({
         currentRound={currentRound}
         isWorking={isWorking}
         onAdvance={onAdvance}
+        onFinish={onFinish}
         onReset={onReset}
       />
 
@@ -244,49 +255,106 @@ function ActionButton({
   currentRound,
   isWorking,
   onAdvance,
+  onFinish,
   onReset,
 }: {
   stage: AppStage;
-  currentRound: 0 | 1 | 2 | 3;
+  currentRound: number;
   isWorking: boolean;
   onAdvance: () => void;
+  onFinish: () => void;
   onReset: () => void;
 }) {
-  let label = "Run Round 1";
-  let helper = "Broad exploration across all 7 tribes";
-  let tone: "primary" | "ready" | "winner" = "primary";
-
   if (stage === "idle") return null;
 
   if (stage === "researching") {
-    label = "Researching…";
-    helper = "Reading the product and preparing buyer tribes";
-  } else if (stage === "tribes_ready") {
-    label = "Run Round 1";
-    helper = "Explore every tribe with the first campaign set";
-  } else if (stage === "round_1") {
-    label = "Run Round 2";
-    helper = "Rewrite weak hooks from the first reactions";
-    tone = "ready";
-  } else if (stage === "round_2") {
-    label = "Run Round 3";
-    helper = "Focus on the strongest tribe and objection";
-    tone = "ready";
-  } else if (stage === "round_3") {
-    label = "Reveal recommendation";
-    helper = "Synthesize the launch decision";
-    tone = "winner";
-  } else if (stage === "winner_ready") {
-    label = "Restart simulation";
-    helper = "Reset agents and try another product";
-    tone = "winner";
+    return (
+      <PrimaryButton
+        label="Researching…"
+        helper="Reading the product and preparing buyer tribes"
+        disabled
+        onClick={() => undefined}
+        tone="primary"
+      />
+    );
+  }
+  if (stage === "tribes_ready") {
+    return (
+      <PrimaryButton
+        label="Run Round 1"
+        helper="Explore every tribe with the first campaign set"
+        disabled={isWorking}
+        onClick={onAdvance}
+        tone="primary"
+      />
+    );
+  }
+  if (stage === "winner_ready") {
+    return (
+      <PrimaryButton
+        label="Restart simulation"
+        helper="Reset agents and try another product"
+        disabled={isWorking}
+        onClick={onReset}
+        tone="winner"
+      />
+    );
   }
 
-  const disabled = isWorking || stage === "researching";
+  // stage === "round_active" → two side-by-side actions: next round + finish
+  const nextLabel = `Run Round ${currentRound + 1}`;
+  const nextHelper =
+    currentRound === 1
+      ? "Rewrite weak hooks from the first reactions"
+      : currentRound === 2
+      ? "Focus on the strongest tribe and objection"
+      : `Sharpen further — refine and re-test`;
 
   return (
+    <div className="grid grid-cols-[1fr_auto] gap-2">
+      <PrimaryButton
+        label={nextLabel}
+        helper={nextHelper}
+        disabled={isWorking}
+        onClick={onAdvance}
+        tone="ready"
+      />
+      <motion.button
+        onClick={onFinish}
+        whileTap={{ scale: 0.97 }}
+        disabled={isWorking}
+        title="Generate the launch recommendation from rounds run so far"
+        className={clsx(
+          "px-3 py-3 rounded-xl border text-[12px] font-medium leading-tight text-center transition-all",
+          isWorking
+            ? "bg-white/[0.06] border-ink-700/70 text-ink-400 cursor-not-allowed"
+            : "bg-gradient-to-b from-plasma/15 to-flame-500/15 border-plasma/40 hover:border-plasma text-plasma",
+        )}
+      >
+        Finish
+        <br />
+        simulation
+      </motion.button>
+    </div>
+  );
+}
+
+function PrimaryButton({
+  label,
+  helper,
+  disabled,
+  onClick,
+  tone,
+}: {
+  label: string;
+  helper: string;
+  disabled: boolean;
+  onClick: () => void;
+  tone: "primary" | "ready" | "winner";
+}) {
+  return (
     <motion.button
-      onClick={stage === "winner_ready" ? onReset : onAdvance}
+      onClick={onClick}
       whileTap={{ scale: 0.97 }}
       disabled={disabled}
       className={clsx(
@@ -295,8 +363,6 @@ function ActionButton({
           ? "bg-white/[0.06] border-ink-700/70 cursor-not-allowed"
           : tone === "winner"
           ? "bg-gradient-to-r from-plasma/15 to-flame-500/15 border-plasma/40 hover:border-plasma"
-          : tone === "ready"
-          ? "bg-white/[0.06] border-ink-700 hover:border-flame-500"
           : "bg-white/[0.06] border-ink-700 hover:border-flame-500",
       )}
     >
@@ -304,15 +370,14 @@ function ActionButton({
         <span
           className={clsx(
             "font-medium text-sm",
-            isWorking ? "text-ink-400" : "text-ink-50",
+            disabled ? "text-ink-400" : "text-ink-50",
           )}
         >
           {label}
         </span>
-        {!disabled && (
+        {!disabled ? (
           <span className="text-flame-300 text-lg leading-none">→</span>
-        )}
-        {disabled && (
+        ) : (
           <span className="inline-block w-2 h-2 rounded-full bg-flame-400 animate-pulse" />
         )}
       </div>

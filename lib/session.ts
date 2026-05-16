@@ -13,6 +13,7 @@ import {
   baseAgents,
 } from "./demo-data";
 import { feedByRound, type FeedMessage } from "./demo/feed";
+import type { BuyerAgent, RoundResult as RoundResultType, Tribe } from "./types";
 
 export type TavilyState = {
   product: TavilyResult[] | null;
@@ -23,7 +24,7 @@ export type TavilyState = {
 export type ViewState = {
   stage: AppStage;
   session: Session;
-  currentRound: 0 | 1 | 2 | 3;
+  currentRound: number;
   selectedAgentId: string | null;
   isWorking: boolean;
   signals: string[];
@@ -68,6 +69,82 @@ function buildSignals(session: Session): string[] {
 
 function delay(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+function buildLiveFeed(
+  roundResult: RoundResultType,
+  tribes: Tribe[],
+  agents: BuyerAgent[],
+): FeedMessage[] {
+  const messages: FeedMessage[] = [];
+  const tribeNameOf = (id: string) =>
+    tribes.find((t) => t.id === id)?.name ?? "Top tribe";
+  const sortedDesc = [...roundResult.tribeScores].sort(
+    (a, b) => b.conversionRate - a.conversionRate,
+  );
+  const winner = sortedDesc[0];
+  const overallPct = Math.round(roundResult.overallConversion * 100);
+
+  messages.push({
+    id: `r${roundResult.round}-announce`,
+    agentName: "Crucible",
+    text: winner
+      ? `Round ${roundResult.round} done · ${overallPct}% conversion · ${tribeNameOf(winner.tribeId)} leading at ${Math.round(winner.conversionRate * 100)}%.`
+      : `Round ${roundResult.round} done · ${overallPct}% conversion.`,
+    type: "announcement",
+    round: roundResult.round,
+  });
+
+  const pickAgent = (tribeId: string, preferState?: BuyerAgent["state"]) => {
+    const pool = agents.filter((a) => a.tribeId === tribeId);
+    if (preferState) {
+      const match = pool.find((a) => a.state === preferState);
+      if (match) return match;
+    }
+    return pool[0];
+  };
+
+  const top = sortedDesc.slice(0, 3);
+  const bottom = sortedDesc.slice(-2).filter((s) => !top.includes(s));
+
+  for (const score of top) {
+    const agent = pickAgent(score.tribeId, "converted") ?? pickAgent(score.tribeId);
+    if (!agent) continue;
+    const type: FeedMessage["type"] =
+      agent.state === "converted" ? "praise" : "chat";
+    messages.push({
+      id: `r${roundResult.round}-top-${score.tribeId}`,
+      agentId: agent.id,
+      tribeId: agent.tribeId,
+      agentName: agent.name,
+      agentRole: agent.role,
+      text: score.representativeFeedback || `${tribeNameOf(score.tribeId)} reacted strongly to the hook.`,
+      type,
+      round: roundResult.round,
+    });
+  }
+
+  for (const score of bottom) {
+    const agent = pickAgent(score.tribeId, "repelled") ?? pickAgent(score.tribeId);
+    if (!agent) continue;
+    const objection = score.topObjections?.[0];
+    messages.push({
+      id: `r${roundResult.round}-bottom-${score.tribeId}`,
+      agentId: agent.id,
+      tribeId: agent.tribeId,
+      agentName: agent.name,
+      agentRole: agent.role,
+      text:
+        score.representativeFeedback ||
+        (objection
+          ? `Not for me. ${objection}.`
+          : `${tribeNameOf(score.tribeId)} didn't bite — the hook didn't speak to them.`),
+      type: "protest",
+      round: roundResult.round,
+    });
+  }
+
+  return messages;
 }
 
 function buildRecommendation(session: Session): Recommendation {
@@ -121,7 +198,7 @@ export function useSession() {
           : assetsByRound[round as 1 | 2 | 3].map((a) => ({ ...a }));
       const rounds = round === 0 ? [] : roundResults.slice(0, round);
       setView({
-        stage: finalize ? "winner_ready" : round === 0 ? "tribes_ready" : round === 1 ? "round_1" : round === 2 ? "round_2" : "round_3",
+        stage: finalize ? "winner_ready" : round === 0 ? "tribes_ready" : "round_active",
         session: {
           ...buildFallbackSession(),
           agents,
@@ -401,13 +478,14 @@ export function useSession() {
     })();
   }, []);
 
-  const runRound = useCallback(async (round: 1 | 2 | 3) => {
+  const runRound = useCallback(async (round: number) => {
     const snapshot = viewRef.current.session;
     setView((v) => ({ ...v, isWorking: true }));
 
     await delay(420);
 
     // Regen step: fires BEFORE the /api/round call when advancing to round 2
+    // (storyboard "learning moment" — only triggered once between R1 and R2).
     if (round === 2) {
       const prevRound = viewRef.current.session.rounds.find((r) => r.round === 1);
       const targets = prevRound?.regenerationTargets ?? [];
@@ -494,14 +572,18 @@ export function useSession() {
       .then((r) => (r.ok ? r.json() : null))
       .catch(() => null);
 
+    const fallbackRoundKey = (round >= 3 ? 3 : round) as 1 | 2 | 3;
     const updatedAssets = Array.isArray(apiResult?.updatedAssets)
       ? apiResult.updatedAssets
-      : assetsByRound[round].map((a) => ({ ...a }));
-    const roundResult = apiResult?.roundResult ?? roundResults[round - 1];
+      : assetsByRound[fallbackRoundKey].map((a) => ({ ...a }));
+    const roundResult = apiResult?.roundResult ?? {
+      ...roundResults[fallbackRoundKey - 1],
+      round,
+    };
     const finalAgents = Array.isArray(apiResult?.updatedAgents)
       ? apiResult.updatedAgents
       : applyRoundState(
-          round,
+          fallbackRoundKey,
           snapshot?.agents?.length === 70 ? snapshot.agents : baseAgents,
         );
 
@@ -516,7 +598,7 @@ export function useSession() {
         ),
       },
       currentRound: round,
-      stage: round === 1 ? "round_1" : round === 2 ? "round_2" : "round_3",
+      stage: "round_active",
     }));
 
     // Stagger the 70 agent state transitions to make the simulation feel alive.
@@ -529,7 +611,12 @@ export function useSession() {
       [revealOrder[i], revealOrder[j]] = [revealOrder[j], revealOrder[i]];
     }
 
-    const roundFeed = feedByRound[round] ?? [];
+    // Choose between hand-authored Oura feed (deterministic demo) and a live feed
+    // derived from the actual tribe scores + buyers when running against a real URL.
+    const isOuraFallback = snapshot.brief.source === "fallback" && round >= 1 && round <= 3;
+    const roundFeed: FeedMessage[] = isOuraFallback
+      ? feedByRound[round as 1 | 2 | 3] ?? []
+      : buildLiveFeed(roundResult, snapshot.tribes ?? [], finalAgents);
     const totalReveals = revealOrder.length;
     // Drip a feed message roughly every 1/N of the way through the reveal.
     const feedDripStep = roundFeed.length > 0 ? Math.max(1, Math.floor(totalReveals / roundFeed.length)) : Infinity;
@@ -564,75 +651,65 @@ export function useSession() {
 
     await delay(400);
     setView((v) => ({ ...v, isWorking: false }));
-
-    if (round === 3) {
-      // Kick off video generation immediately (non-blocking) using all accumulated learnings.
-      const finalSnapshot = viewRef.current.session;
-      const r3Scores = finalSnapshot.rounds.find((r) => r.round === 3)?.tribeScores ?? [];
-      const winner = r3Scores[0]; // sorted DESC by conversionRate
-      if (winner) {
-        const winningTribe = finalSnapshot.tribes.find((t) => t.id === winner.tribeId);
-        const winningAsset = finalSnapshot.assets.find((a) => a.tribeId === winner.tribeId);
-        fetch("/api/generate-video", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            productName: finalSnapshot.brief.name,
-            winningHook: winningAsset?.hook ?? "",
-            winningTribeName: winningTribe?.name ?? "",
-            winningTribePain: winningTribe?.mainPain ?? "",
-            winningTribeTrigger: winningTribe?.buyingTrigger ?? "",
-            objectionAvoided: winningTribe?.topObjection ?? "",
-            whyItWon: winner.representativeFeedback ?? "",
-            keyPromise: finalSnapshot.brief.keyPromise ?? "",
-          }),
-        })
-          .then((r) => (r.ok ? r.json() : null))
-          .then((data: { requestId?: string | null; prompt?: string } | null) => {
-            if (!data?.requestId) {
-              setView((v) => ({ ...v, videoStatus: "error" }));
-              return;
-            }
-            setView((v) => ({
-              ...v,
-              videoRequestId: data.requestId ?? undefined,
-              videoStatus: "pending",
-            }));
-            const interval = setInterval(async () => {
-              try {
-                const statusRes = await fetch(`/api/video-status?id=${data.requestId}`);
-                const status = (await statusRes.json().catch(() => null)) as {
-                  status?: string;
-                  videoUrl?: string;
-                } | null;
-                if (status?.status === "completed" && status?.videoUrl) {
-                  clearInterval(interval);
-                  setView((v) => ({
-                    ...v,
-                    videoUrl: status.videoUrl,
-                    videoStatus: "completed",
-                  }));
-                }
-              } catch {
-                // keep polling
-              }
-            }, 3000);
-            // Safety: give up after 3 min
-            setTimeout(() => clearInterval(interval), 180000);
-          })
-          .catch(() => {
-            setView((v) => ({ ...v, videoStatus: "error" }));
-          });
-      }
-
-      await delay(450);
-      setView((v) => ({
-        ...v,
-        stage: "winner_ready",
-        session: { ...v.session, recommendation: buildRecommendation(v.session) },
-      }));
-    }
   }, []);
+
+  function kickOffFinaleVideo() {
+    const finalSnapshot = viewRef.current.session;
+    const lastRound = [...finalSnapshot.rounds].sort((a, b) => b.round - a.round)[0];
+    const winner = lastRound?.tribeScores?.[0]; // sorted DESC by conversionRate
+    if (!winner) return;
+    const winningTribe = finalSnapshot.tribes.find((t) => t.id === winner.tribeId);
+    const winningAsset = finalSnapshot.assets.find((a) => a.tribeId === winner.tribeId);
+    fetch("/api/generate-video", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        productName: finalSnapshot.brief.name,
+        winningHook: winningAsset?.hook ?? "",
+        winningTribeName: winningTribe?.name ?? "",
+        winningTribePain: winningTribe?.mainPain ?? "",
+        winningTribeTrigger: winningTribe?.buyingTrigger ?? "",
+        objectionAvoided: winningTribe?.topObjection ?? "",
+        whyItWon: winner.representativeFeedback ?? "",
+        keyPromise: finalSnapshot.brief.keyPromise ?? "",
+      }),
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: { requestId?: string | null; prompt?: string } | null) => {
+        if (!data?.requestId) {
+          setView((v) => ({ ...v, videoStatus: "error" }));
+          return;
+        }
+        setView((v) => ({
+          ...v,
+          videoRequestId: data.requestId ?? undefined,
+          videoStatus: "pending",
+        }));
+        const interval = setInterval(async () => {
+          try {
+            const statusRes = await fetch(`/api/video-status?id=${data.requestId}`);
+            const status = (await statusRes.json().catch(() => null)) as {
+              status?: string;
+              videoUrl?: string;
+            } | null;
+            if (status?.status === "completed" && status?.videoUrl) {
+              clearInterval(interval);
+              setView((v) => ({
+                ...v,
+                videoUrl: status.videoUrl,
+                videoStatus: "completed",
+              }));
+            }
+          } catch {
+            // keep polling
+          }
+        }, 3000);
+        setTimeout(() => clearInterval(interval), 180000);
+      })
+      .catch(() => {
+        setView((v) => ({ ...v, videoStatus: "error" }));
+      });
+  }
 
   const selectAgent = useCallback((id: string | null) => {
     setView((v) => ({ ...v, selectedAgentId: id }));
@@ -644,6 +721,9 @@ export function useSession() {
       stage: "winner_ready",
       session: { ...v.session, recommendation: buildRecommendation(v.session) },
     }));
+    // Kick off the FAL Veo3 finale generation (best-effort, non-blocking).
+    // The recommendation card renders immediately; the video appears when ready.
+    setTimeout(() => kickOffFinaleVideo(), 50);
   }, []);
 
   return {

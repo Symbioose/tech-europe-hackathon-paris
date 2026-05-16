@@ -82,7 +82,7 @@ export type TribeScore = {
 };
 
 export type RoundResult = {
-  round: 1 | 2 | 3;
+  round: number;
   overallConversion: number;
   learning: string;
   highlights: string[];
@@ -117,7 +117,5 @@ export type AppStage =
   | "idle"
   | "researching"
   | "tribes_ready"
-  | "round_1"
-  | "round_2"
-  | "round_3"
+  | "round_active"
   | "winner_ready";

@@ -18,6 +18,7 @@ type Props = {
   onAdvance: () => void;
   onReset: () => void;
   tavily: TavilyState;
+  videoUrl?: string;
 };
 
 export function RightPanel({
@@ -32,6 +33,7 @@ export function RightPanel({
   onAdvance,
   onReset,
   tavily,
+  videoUrl,
 }: Props) {
   const overall = rounds[rounds.length - 1]?.overallConversion ?? 0;
   const tribeMap = new Map(tribes.map((t) => [t.id, t]));
@@ -126,7 +128,14 @@ export function RightPanel({
               animate={{ opacity: 1, y: 0, scale: 1 }}
               transition={{ duration: 0.5 }}
             >
-              <RecommendationCard rec={recommendation} winningTribeName={winningTribe.name} />
+              <RecommendationCard
+                rec={recommendation}
+                winningTribeName={winningTribe.name}
+                videoUrl={videoUrl}
+                recommendationCreativeUrl={
+                  assets.find((a) => a.tribeId === recommendation.winningTribeId)?.creativeUrl
+                }
+              />
             </motion.div>
           )}
         </AnimatePresence>
@@ -364,12 +373,32 @@ function SignalsLoading() {
 function RecommendationCard({
   rec,
   winningTribeName,
+  videoUrl,
+  recommendationCreativeUrl,
 }: {
   rec: Recommendation;
   winningTribeName: string;
+  videoUrl?: string;
+  recommendationCreativeUrl?: string;
 }) {
   return (
     <div className="rounded-xl border border-plasma/40 bg-gradient-to-br from-plasma/5 via-ink-850 to-flame-500/10 p-4">
+      {videoUrl ? (
+        <video
+          src={videoUrl}
+          autoPlay
+          muted
+          loop
+          playsInline
+          className="w-full rounded-lg border border-white/10 mb-3"
+        />
+      ) : recommendationCreativeUrl ? (
+        <img
+          src={recommendationCreativeUrl}
+          alt="Winning creative"
+          className="w-full rounded-lg border border-white/10 mb-3 ken-burns"
+        />
+      ) : null}
       <div className="flex items-center gap-2 mb-2.5">
         <div className="text-[10px] uppercase tracking-[0.18em] text-plasma">Launch decision</div>
         <div className="h-px flex-1 bg-plasma/20" />

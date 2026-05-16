@@ -47,6 +47,7 @@ export default function Page() {
     feed,
     tavily,
     regenState,
+    videoUrl,
   } = view;
 
   useEffect(() => {
@@ -201,6 +202,7 @@ export default function Page() {
           onAdvance={handleAdvance}
           onReset={actions.reset}
           tavily={tavily}
+          videoUrl={videoUrl}
         />
       </main>
 

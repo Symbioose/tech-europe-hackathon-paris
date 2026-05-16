@@ -30,6 +30,9 @@ export type ViewState = {
   feed: FeedMessage[];
   tavily: TavilyState;
   regenState: Record<string, { isRegenerating: boolean; oldHook?: string; newHook?: string }>;
+  videoRequestId?: string;
+  videoUrl?: string;
+  videoStatus?: "pending" | "completed" | "error";
 };
 
 const initial: ViewState = {
@@ -42,6 +45,9 @@ const initial: ViewState = {
   feed: [],
   tavily: { product: null, competitors: null, trends: null },
   regenState: {},
+  videoRequestId: undefined,
+  videoUrl: undefined,
+  videoStatus: undefined,
 };
 
 const RESEARCH_STEPS = [
@@ -508,6 +514,65 @@ export function useSession() {
     setView((v) => ({ ...v, isWorking: false }));
 
     if (round === 3) {
+      // Kick off video generation immediately (non-blocking) using all accumulated learnings.
+      const finalSnapshot = viewRef.current.session;
+      const r3Scores = finalSnapshot.rounds.find((r) => r.round === 3)?.tribeScores ?? [];
+      const winner = r3Scores[0]; // sorted DESC by conversionRate
+      if (winner) {
+        const winningTribe = finalSnapshot.tribes.find((t) => t.id === winner.tribeId);
+        const winningAsset = finalSnapshot.assets.find((a) => a.tribeId === winner.tribeId);
+        fetch("/api/generate-video", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            productName: finalSnapshot.brief.name,
+            winningHook: winningAsset?.hook ?? "",
+            winningTribeName: winningTribe?.name ?? "",
+            winningTribePain: winningTribe?.mainPain ?? "",
+            winningTribeTrigger: winningTribe?.buyingTrigger ?? "",
+            objectionAvoided: winningTribe?.topObjection ?? "",
+            whyItWon: winner.representativeFeedback ?? "",
+            keyPromise: finalSnapshot.brief.keyPromise ?? "",
+          }),
+        })
+          .then((r) => (r.ok ? r.json() : null))
+          .then((data: { requestId?: string | null; prompt?: string } | null) => {
+            if (!data?.requestId) {
+              setView((v) => ({ ...v, videoStatus: "error" }));
+              return;
+            }
+            setView((v) => ({
+              ...v,
+              videoRequestId: data.requestId ?? undefined,
+              videoStatus: "pending",
+            }));
+            const interval = setInterval(async () => {
+              try {
+                const statusRes = await fetch(`/api/video-status?id=${data.requestId}`);
+                const status = (await statusRes.json().catch(() => null)) as {
+                  status?: string;
+                  videoUrl?: string;
+                } | null;
+                if (status?.status === "completed" && status?.videoUrl) {
+                  clearInterval(interval);
+                  setView((v) => ({
+                    ...v,
+                    videoUrl: status.videoUrl,
+                    videoStatus: "completed",
+                  }));
+                }
+              } catch {
+                // keep polling
+              }
+            }, 3000);
+            // Safety: give up after 3 min
+            setTimeout(() => clearInterval(interval), 180000);
+          })
+          .catch(() => {
+            setView((v) => ({ ...v, videoStatus: "error" }));
+          });
+      }
+
       await delay(450);
       setView((v) => ({
         ...v,

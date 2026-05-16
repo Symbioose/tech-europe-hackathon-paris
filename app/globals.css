@@ -1,0 +1,66 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body {
+  height: 100%;
+  background: #070811;
+  color: #e9ecf6;
+  font-family: ui-sans-serif, system-ui, "Inter", "Helvetica Neue", Arial, sans-serif;
+}
+
+body {
+  background:
+    radial-gradient(1100px 700px at 22% -10%, rgba(255, 122, 26, 0.12), transparent 60%),
+    radial-gradient(900px 600px at 100% 100%, rgba(58, 255, 233, 0.08), transparent 55%),
+    #070811;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.scroll-thin::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.scroll-thin::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+}
+.scroll-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+@keyframes ringPulse {
+  0% { box-shadow: 0 0 0 0 rgba(255, 122, 26, 0.55); }
+  70% { box-shadow: 0 0 0 14px rgba(255, 122, 26, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(255, 122, 26, 0); }
+}
+
+.ring-pulse {
+  animation: ringPulse 1.8s ease-out infinite;
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.08) 50%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.8s linear infinite;
+}

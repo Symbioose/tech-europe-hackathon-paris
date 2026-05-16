@@ -2,7 +2,14 @@
 
 import { useState } from "react";
 import { motion } from "framer-motion";
+import dynamic from "next/dynamic";
 import type { Platform } from "@/lib/types";
+
+// Three.js mounts on the client only — keep it out of any pre-render path.
+const ShaderBackground = dynamic(
+  () => import("./ShaderBackground").then((m) => m.ShaderBackground),
+  { ssr: false },
+);
 
 export type TestType =
   | "customer_discovery"
@@ -39,6 +46,7 @@ const DEFAULTS: LaunchSetupValues = {
 
 export function LaunchSetup({ onLaunch }: Props) {
   const [values, setValues] = useState<LaunchSetupValues>(DEFAULTS);
+  const [focused, setFocused] = useState<string | null>(null);
 
   function update(next: Partial<LaunchSetupValues>) {
     setValues((current) => ({ ...current, ...next }));
@@ -54,112 +62,188 @@ export function LaunchSetup({ onLaunch }: Props) {
   const canLaunch = values.productUrl.trim().length > 0;
 
   return (
-    <div className="min-h-screen overflow-hidden bg-ink-950 text-ink-50">
-      <div className="absolute inset-0 bg-grid-fade opacity-90" />
-      <div className="absolute inset-0 [background-image:radial-gradient(circle_at_1px_1px,rgba(255,255,255,0.065)_1px,transparent_0)] [background-size:24px_24px] opacity-40" />
+    <div className="relative min-h-screen overflow-hidden bg-ink-950 text-ink-50">
+      {/* Live WebGL mesh-gradient (three.js shader) */}
+      <ShaderBackground intensity={0.85} />
+      {/* Top-down darkening so foreground text always reads cleanly */}
+      <div className="absolute inset-0 -z-[5] bg-gradient-to-b from-ink-950/30 via-ink-950/60 to-ink-950/85" />
 
       <div className="relative z-10 min-h-screen px-6 py-6 flex flex-col">
-        <header className="flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="relative">
-              <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-flame-400 to-flame-700 flex items-center justify-center shadow-glow">
-                <span className="text-ink-950 font-bold text-sm">C</span>
-              </div>
-              <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-plasma shadow-plasma" />
-            </div>
-            <div>
-              <div className="text-sm font-semibold tracking-tight">Crucible</div>
-              <div className="text-[10px] uppercase tracking-[0.2em] text-ink-400 -mt-0.5">
-                Synthetic market research
-              </div>
-            </div>
+        {/* Sober wordmark — no logo badge */}
+        <header className="flex items-center justify-between">
+          <div className="text-[14px] font-semibold tracking-[0.32em] text-ink-50">
+            CRUCIBLE
+          </div>
+          <div className="text-[10px] uppercase tracking-[0.24em] text-ink-300/80">
+            Tech: Europe Paris · 2026
           </div>
         </header>
 
         <main className="flex-1 grid items-center py-8">
           <div className="mx-auto w-full max-w-2xl">
-            <div className="text-center mb-6">
-              <div className="text-[10px] uppercase tracking-[0.22em] text-flame-300">
-                Launch simulation
+            <motion.div
+              initial={{ opacity: 0, y: 18 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.55, ease: [0.2, 0.7, 0.2, 1] }}
+              className="text-center mb-7"
+            >
+              <div className="text-[10px] uppercase tracking-[0.32em] text-flame-300/95">
+                Synthetic market research
               </div>
-              <h1 className="mt-2 text-4xl font-semibold tracking-tight">
-                Run a launch simulation
+              <h1 className="mt-3 text-[42px] sm:text-[54px] font-semibold tracking-[-0.02em] leading-[1.04]">
+                Test your launch{" "}
+                <span className="bg-gradient-to-r from-flame-300 via-flame-400 to-plasma bg-clip-text text-transparent">
+                  before
+                </span>{" "}
+                you ship.
               </h1>
-              <p className="mt-3 max-w-xl mx-auto text-[14px] leading-6 text-ink-300">
-                Crucible tests who would buy, why they react, and what to change — before
-                you spend a launch week finding out the hard way.
+              <p className="mt-4 max-w-xl mx-auto text-[14.5px] leading-7 text-ink-200/95">
+                Find out who would buy, why they react, and what to change before
+                you spend a launch week testing it for real.
               </p>
-            </div>
+            </motion.div>
 
-            <div className="rounded-2xl border border-white/10 bg-ink-900/78 backdrop-blur-xl shadow-2xl overflow-hidden">
-              {/* Business question (read-only — the single supported demo path) */}
-              <div className="border-b border-white/10 px-6 py-4 bg-plasma/[0.04]">
-                <div className="text-[10px] uppercase tracking-[0.22em] text-plasma">
+            <motion.div
+              initial={{ opacity: 0, y: 14, scale: 0.985 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              transition={{ duration: 0.55, ease: [0.2, 0.7, 0.2, 1], delay: 0.12 }}
+              className="relative rounded-2xl overflow-hidden border border-white/15"
+              style={{
+                background:
+                  "linear-gradient(180deg, rgba(20,22,38,0.62) 0%, rgba(10,12,22,0.58) 100%)",
+                backdropFilter: "blur(22px) saturate(140%)",
+                WebkitBackdropFilter: "blur(22px) saturate(140%)",
+                boxShadow:
+                  "inset 0 1px 0 rgba(255,255,255,0.18), 0 30px 80px -20px rgba(255,122,26,0.20), 0 0 0 1px rgba(255,255,255,0.04)",
+              }}
+            >
+              {/* Specular highlight (liquid-glass cue) */}
+              <div
+                aria-hidden
+                className="pointer-events-none absolute inset-0"
+                style={{
+                  background:
+                    "radial-gradient(120% 60% at 50% -10%, rgba(255,122,26,0.18), transparent 50%)",
+                }}
+              />
+
+              {/* Business question — read-only banner */}
+              <div className="relative border-b border-white/10 px-6 py-4">
+                <div className="text-[10px] uppercase tracking-[0.22em] text-plasma/95">
                   Business question
                 </div>
                 <div className="mt-1.5 text-[15px] text-ink-50 font-medium leading-snug">
-                  Which customer segment and message should we launch with?
+                  Which customer segment should we target first, and what message will convert them?
                 </div>
               </div>
 
-              <div className="px-6 py-5 space-y-5">
+              <div className="relative px-6 py-5 space-y-5">
                 <Field
+                  id="url"
                   label="Product URL"
-                  hint="What you're launching. We'll read the page live."
+                  hint="We'll read the product page live."
+                  focused={focused === "url"}
                 >
                   <input
+                    id="url"
                     value={values.productUrl}
                     onChange={(e) => update({ productUrl: e.target.value })}
+                    onFocus={() => setFocused("url")}
+                    onBlur={() => setFocused(null)}
                     placeholder="https://yourproduct.com"
                     autoFocus
-                    className="w-full rounded-xl border border-white/10 bg-white/[0.06] px-4 py-3 text-sm outline-none transition-colors placeholder:text-ink-500 focus:border-flame-400"
+                    className={inputClass}
                   />
                 </Field>
 
                 <Field
+                  id="note"
                   label="What are you launching?"
-                  hint="Optional · 1 line if the page is vague"
+                  hint="Optional · Add one line if the page is vague."
+                  focused={focused === "note"}
                 >
                   <input
+                    id="note"
                     value={values.productNote}
                     onChange={(e) => update({ productNote: e.target.value })}
+                    onFocus={() => setFocused("note")}
+                    onBlur={() => setFocused(null)}
                     placeholder="e.g. Generative media API for developers"
-                    className="w-full rounded-xl border border-white/10 bg-white/[0.06] px-4 py-3 text-sm outline-none transition-colors placeholder:text-ink-500 focus:border-flame-400"
+                    className={inputClass}
                   />
                 </Field>
 
                 <Field
+                  id="market"
                   label="Target market"
-                  hint="Optional · skip if you don't know yet"
+                  hint="Optional · Leave blank if you want Crucible to discover it."
+                  focused={focused === "market"}
                 >
                   <input
+                    id="market"
                     value={values.targetMarket}
                     onChange={(e) => update({ targetMarket: e.target.value })}
+                    onFocus={() => setFocused("market")}
+                    onBlur={() => setFocused(null)}
                     placeholder="e.g. AI app builders · indie hackers · agencies"
-                    className="w-full rounded-xl border border-white/10 bg-white/[0.06] px-4 py-3 text-sm outline-none transition-colors placeholder:text-ink-500 focus:border-flame-400"
+                    className={inputClass}
                   />
                 </Field>
               </div>
 
-              <div className="border-t border-white/10 px-6 py-4 flex flex-col gap-2.5">
+              <div className="relative border-t border-white/10 px-6 py-4 flex flex-col gap-2.5">
                 <motion.button
                   type="button"
                   onClick={submit}
                   whileTap={{ scale: 0.985 }}
+                  whileHover={canLaunch ? { y: -1 } : undefined}
                   disabled={!canLaunch}
-                  className="w-full rounded-xl bg-gradient-to-r from-flame-400 to-flame-600 px-5 py-3.5 text-[15px] font-semibold text-ink-950 shadow-glow transition-all hover:from-flame-300 hover:to-flame-500 disabled:from-ink-700 disabled:to-ink-700 disabled:text-ink-400 disabled:cursor-not-allowed disabled:shadow-none"
+                  className="relative w-full overflow-hidden rounded-xl px-5 py-3.5 text-[15px] font-semibold text-ink-950 disabled:text-ink-400 disabled:cursor-not-allowed transition-colors"
+                  style={{
+                    background: canLaunch
+                      ? "linear-gradient(95deg, #ffb673 0%, #ff7a1a 35%, #f25b07 65%, #ff7a1a 100%)"
+                      : "rgba(255,255,255,0.06)",
+                    boxShadow: canLaunch
+                      ? "0 14px 36px -8px rgba(255,122,26,0.55), inset 0 1px 0 rgba(255,255,255,0.4)"
+                      : "none",
+                    border: canLaunch ? "none" : "1px solid rgba(255,255,255,0.06)",
+                  }}
                 >
-                  Run market simulation
+                  {canLaunch && (
+                    <motion.span
+                      aria-hidden
+                      className="absolute inset-0"
+                      style={{
+                        background:
+                          "linear-gradient(95deg, transparent, rgba(255,255,255,0.32), transparent)",
+                        backgroundSize: "200% 100%",
+                      }}
+                      animate={{ backgroundPositionX: ["-200%", "200%"] }}
+                      transition={{ duration: 2.6, repeat: Infinity, ease: "linear" }}
+                    />
+                  )}
+                  <span className="relative">Run market simulation →</span>
                 </motion.button>
                 <div className="text-center text-[11px] text-ink-400">
-                  70 synthetic buyers · 7 customer populations · live reactions · final targeting plan
+                  70 synthetic buyers · 7 customer populations · live reactions · targeting plan
                 </div>
               </div>
-            </div>
+            </motion.div>
 
-            <div className="mt-5 text-center text-[11px] text-ink-500">
-              Powered by OpenAI · Tavily · FAL · Gradium
-            </div>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.6, delay: 0.4 }}
+              className="mt-6 flex items-center justify-center gap-3 text-[10.5px] uppercase tracking-[0.24em] text-ink-400"
+            >
+              <span>OpenAI</span>
+              <Dot />
+              <span>Tavily</span>
+              <Dot />
+              <span>FAL</span>
+              <Dot />
+              <span>Gradium</span>
+            </motion.div>
           </div>
         </main>
       </div>
@@ -167,22 +251,40 @@ export function LaunchSetup({ onLaunch }: Props) {
   );
 }
 
+const inputClass =
+  "w-full rounded-xl border bg-white/[0.04] px-4 py-3 text-[14px] outline-none transition-all placeholder:text-ink-500 border-white/10 focus:bg-white/[0.06] focus:border-flame-400/70 focus:shadow-[0_0_0_4px_rgba(255,122,26,0.10)]";
+
 function Field({
+  id,
   label,
   hint,
+  focused,
   children,
 }: {
+  id: string;
   label: string;
   hint: string;
+  focused: boolean;
   children: React.ReactNode;
 }) {
   return (
-    <label className="block">
-      <div className="flex items-end justify-between gap-3">
-        <span className="text-sm font-medium text-ink-100">{label}</span>
+    <div className="block">
+      <label htmlFor={id} className="flex items-end justify-between gap-3 mb-2">
+        <span
+          className={
+            "text-[13px] font-medium transition-colors " +
+            (focused ? "text-flame-200" : "text-ink-100")
+          }
+        >
+          {label}
+        </span>
         <span className="text-[11px] text-ink-500">{hint}</span>
-      </div>
-      <div className="mt-2">{children}</div>
-    </label>
+      </label>
+      {children}
+    </div>
   );
+}
+
+function Dot() {
+  return <span className="w-1 h-1 rounded-full bg-ink-500" />;
 }

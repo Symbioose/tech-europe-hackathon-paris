@@ -3,6 +3,7 @@
 import { motion } from "framer-motion";
 import type { Tribe, TribeScore } from "@/lib/types";
 import clsx from "clsx";
+import { RegenerationOverlay } from "./RegenerationOverlay";
 
 type Props = {
   tribe: Tribe;
@@ -10,6 +11,9 @@ type Props = {
   isWinner: boolean;
   index: number;
   creativeUrl?: string;
+  isRegenerating?: boolean;
+  oldHook?: string;
+  newHook?: string;
 };
 
 const platformLabel: Record<string, string> = {
@@ -19,7 +23,7 @@ const platformLabel: Record<string, string> = {
   auto: "AUTO",
 };
 
-export function TribeCard({ tribe, score, isWinner, index, creativeUrl }: Props) {
+export function TribeCard({ tribe, score, isWinner, index, creativeUrl, isRegenerating, oldHook, newHook }: Props) {
   const conversion = score ? Math.round(score.conversionRate * 100) : 0;
   return (
     <motion.div
@@ -109,6 +113,12 @@ export function TribeCard({ tribe, score, isWinner, index, creativeUrl }: Props)
           />
         </div>
       </div>
+
+      <RegenerationOverlay
+        isRegenerating={isRegenerating ?? false}
+        oldHook={oldHook}
+        newHook={newHook}
+      />
     </motion.div>
   );
 }

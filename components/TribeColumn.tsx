@@ -10,9 +10,10 @@ type Props = {
   assets: LaunchAsset[];
   winnerId?: string;
   visible: boolean;
+  regenState?: Record<string, { isRegenerating: boolean; oldHook?: string; newHook?: string }>;
 };
 
-export function TribeColumn({ tribes, scores, assets, winnerId, visible }: Props) {
+export function TribeColumn({ tribes, scores, assets, winnerId, visible, regenState }: Props) {
   const scoreMap = new Map(scores.map((s) => [s.tribeId, s]));
 
   return (
@@ -33,6 +34,9 @@ export function TribeColumn({ tribes, scores, assets, winnerId, visible }: Props
                 isWinner={t.id === winnerId}
                 index={i}
                 creativeUrl={assets.find((a) => a.tribeId === t.id)?.creativeUrl}
+                isRegenerating={regenState?.[t.id]?.isRegenerating}
+                oldHook={regenState?.[t.id]?.oldHook}
+                newHook={regenState?.[t.id]?.newHook}
               />
             ))
           : Array.from({ length: 7 }).map((_, i) => (

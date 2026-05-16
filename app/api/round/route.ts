@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { applyRoundState, assetsByRound, baseAgents } from "@/lib/demo-data";
-import type { LaunchAsset, ProductBrief, RoundResult, Tribe } from "@/lib/types";
+import type { LaunchAsset, ProductBrief, RegenerationTarget, RoundResult, Tribe } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -89,12 +89,30 @@ export async function POST(req: Request) {
     : { 1: 0.09, 2: 0.18, 3: 0.31 }[round];
   const updatedAgents = applyRoundState(round, baseAgents);
   const updatedAssets = pickAssets(round, body.assets);
+
+  const sortedAsc = [...tribeScores].sort((a, b) => a.conversionRate - b.conversionRate);
+  const regenerationTargets: RegenerationTarget[] | undefined =
+    round === 1
+      ? sortedAsc.slice(0, 2).map((s) => {
+          const previousHook =
+            body.assets?.find((a) => a.tribeId === s.tribeId)?.hook ??
+            updatedAssets.find((a) => a.tribeId === s.tribeId)?.hook ??
+            "";
+          return {
+            tribeId: s.tribeId,
+            previousHook,
+            failureReason: s.representativeFeedback ?? "Buyers did not react clearly.",
+          };
+        })
+      : undefined;
+
   const roundResult: RoundResult = {
     round,
     overallConversion,
     ...roundStrategy[round],
     assets: updatedAssets,
     tribeScores,
+    regenerationTargets,
   };
 
   return NextResponse.json({

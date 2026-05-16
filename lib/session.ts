@@ -29,6 +29,7 @@ export type ViewState = {
   signals: string[];
   feed: FeedMessage[];
   tavily: TavilyState;
+  regenState: Record<string, { isRegenerating: boolean; oldHook?: string; newHook?: string }>;
 };
 
 const initial: ViewState = {
@@ -40,6 +41,7 @@ const initial: ViewState = {
   signals: [],
   feed: [],
   tavily: { product: null, competitors: null, trends: null },
+  regenState: {},
 };
 
 const RESEARCH_STEPS = [
@@ -112,6 +114,7 @@ export function useSession() {
         }),
         feed: [],
         tavily: { product: null, competitors: null, trends: null },
+        regenState: {},
       });
     };
     if (stage === "tribes") buildAt(0, false);
@@ -376,6 +379,79 @@ export function useSession() {
     setView((v) => ({ ...v, isWorking: true }));
 
     await delay(420);
+
+    // Regen step: fires BEFORE the /api/round call when advancing to round 2
+    if (round === 2) {
+      const prevRound = viewRef.current.session.rounds.find((r) => r.round === 1);
+      const targets = prevRound?.regenerationTargets ?? [];
+      if (targets.length > 0) {
+        // 1. Mark targets as regenerating
+        setView((v) => ({
+          ...v,
+          regenState: targets.reduce(
+            (acc, t) => ({ ...acc, [t.tribeId]: { isRegenerating: true } }),
+            {} as ViewState["regenState"],
+          ),
+        }));
+
+        const regenSnapshot = viewRef.current.session;
+
+        // 2. Fire 2 parallel regen requests
+        await Promise.all(
+          targets.map(async (target) => {
+            const tribe = regenSnapshot.tribes.find((t) => t.id === target.tribeId);
+            if (!tribe) return;
+            const tribeIndex = regenSnapshot.tribes.findIndex((t) => t.id === target.tribeId);
+            try {
+              const res = await fetch("/api/regenerate-creative", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  productName: regenSnapshot.brief.name,
+                  tribe,
+                  tribeIndex,
+                  previousHook: target.previousHook,
+                  failureReason: target.failureReason,
+                  assetMode: "generate",
+                }),
+              });
+              const data = (await res.json().catch(() => null)) as {
+                tribeId: string;
+                oldHook: string;
+                newHook: string;
+                newImageUrl: string;
+              } | null;
+              if (!data) return;
+              setView((v) => ({
+                ...v,
+                regenState: {
+                  ...v.regenState,
+                  [data.tribeId]: { isRegenerating: false, oldHook: data.oldHook, newHook: data.newHook },
+                },
+                session: {
+                  ...v.session,
+                  assets: v.session.assets.map((a) =>
+                    a.tribeId === data.tribeId
+                      ? { ...a, hook: data.newHook, previousHook: data.oldHook, creativeUrl: data.newImageUrl }
+                      : a,
+                  ),
+                },
+              }));
+            } catch {
+              // silently ignore — card stays in regenerating state briefly
+            }
+          }),
+        );
+
+        // 3. Hold the before/after diff visible for ~2.2 s, then clear
+        setTimeout(() => {
+          setView((v) => ({ ...v, regenState: {} }));
+        }, 2200);
+
+        // Brief pause so the diff is visible before round processing begins
+        await delay(500);
+      }
+    }
 
     const apiResult = await fetch("/api/round", {
       method: "POST",

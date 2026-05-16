@@ -112,6 +112,23 @@ export async function answerInPersona(
   );
 }
 
+export async function rewriteHook(args: {
+  productName: string;
+  tribe: Tribe;
+  previousHook: string;
+  failureReason: string;
+}): Promise<string | null> {
+  const { tribe, previousHook, failureReason } = args;
+  const result = await openaiChat<string>(
+    "You rewrite marketing hooks. Output ONE new hook, max 12 words, no quotes, no preamble.",
+    `Previous hook (failed): "${previousHook}". Tribe: ${tribe.name} — pain: ${tribe.mainPain}, trigger: ${tribe.buyingTrigger}, objection: ${tribe.topObjection}. Buyers said: "${failureReason}". Rewrite the hook to address the failure while keeping it concrete and one specific moment. Max 12 words.`,
+    "text",
+  );
+  if (!result) return null;
+  // Strip surrounding quotes if present
+  return result.replace(/^["']|["']$/g, "").trim();
+}
+
 export async function isOpenAIConfigured(): Promise<boolean> {
   return Boolean(process.env.OPENAI_API_KEY);
 }

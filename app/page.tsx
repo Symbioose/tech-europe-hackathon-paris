@@ -46,6 +46,7 @@ export default function Page() {
     signals,
     feed,
     tavily,
+    regenState,
   } = view;
 
   useEffect(() => {
@@ -134,6 +135,7 @@ export default function Page() {
           assets={session.assets}
           winnerId={winnerId}
           visible={tribesVisible}
+          regenState={regenState}
         />
 
         <div className="relative overflow-hidden min-h-0 h-full">

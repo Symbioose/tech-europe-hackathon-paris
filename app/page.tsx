@@ -8,6 +8,7 @@ import { MarketWorld3D } from "@/components/MarketWorld3D";
 import { RightPanel } from "@/components/RightPanel";
 import { BuyerDrawer } from "@/components/BuyerDrawer";
 import { ActivityFeed } from "@/components/ActivityFeed";
+import { FinalReport } from "@/components/FinalReport";
 import {
   LaunchSetup,
   type LaunchSetupValues,
@@ -70,6 +71,7 @@ export default function Page() {
   );
 
   const tribesVisible = stage !== "idle" && stage !== "researching";
+  const showFinalReport = stage === "winner_ready" && !!session.recommendation;
   const winnerId = session.recommendation?.winningTribeId;
   const lastRoundScores = session.rounds[session.rounds.length - 1]?.tribeScores ?? [];
 
@@ -128,7 +130,13 @@ export default function Page() {
         }
       />
 
-      <main className="flex-1 px-6 py-5 grid gap-5 [grid-template-columns:330px_1fr_380px] grid-rows-[minmax(0,1fr)] min-h-0 overflow-hidden">
+      <main
+        className={
+          showFinalReport
+            ? "flex-1 px-6 py-5 grid gap-5 [grid-template-columns:350px_1fr] grid-rows-[minmax(0,1fr)] min-h-0 overflow-hidden"
+            : "flex-1 px-6 py-5 grid gap-5 [grid-template-columns:330px_1fr_380px] grid-rows-[minmax(0,1fr)] min-h-0 overflow-hidden"
+        }
+      >
         <TribeColumn
           tribes={session.tribes}
           scores={lastRoundScores}
@@ -141,50 +149,65 @@ export default function Page() {
           regenState={regenState}
         />
 
-        <div className="relative overflow-hidden min-h-0 h-full">
-          <div className="absolute left-4 right-4 top-4 z-20 flex flex-wrap items-center justify-center gap-2 pointer-events-none">
-            <ContextPill label="Testing" value={testTypeLabel[setup.testType]} />
-            <ContextPill label="Product" value={setup.productUrl.replace(/^https?:\/\//, "")} />
-            <ContextPill
-              label="Assets"
-              value={setup.assetMode === "generate" ? "Generated variants" : "Provided creative"}
-            />
-          </div>
-
-          <MarketWorld3D
-            agents={stage === "idle" || stage === "researching" ? [] : session.agents}
+        {showFinalReport && session.recommendation ? (
+          <FinalReport
+            recommendation={session.recommendation}
             tribes={session.tribes}
-            selectedAgentId={selectedAgentId}
-            onSelect={actions.selectAgent}
-            isWorking={isWorking}
-            currentRound={currentRound}
-            stageLabel={
-              stage === "researching"
-                ? "Researching market"
-                : stage === "tribes_ready"
-                ? "Awaiting first launch"
-                : `Round ${currentRound}`
-            }
+            assets={session.assets}
+            agents={session.agents}
+            rounds={session.rounds}
+            tavily={tavily}
+            videoUrl={videoUrl}
+            onAskBuyer={actions.askBuyer}
           />
-        </div>
+        ) : (
+          <>
+            <div className="relative overflow-hidden min-h-0 h-full">
+              <div className="absolute left-4 right-4 top-4 z-20 flex flex-wrap items-center justify-center gap-2 pointer-events-none">
+                <ContextPill label="Testing" value={testTypeLabel[setup.testType]} />
+                <ContextPill label="Product" value={setup.productUrl.replace(/^https?:\/\//, "")} />
+                <ContextPill
+                  label="Assets"
+                  value={setup.assetMode === "generate" ? "Generated variants" : "Provided creative"}
+                />
+              </div>
 
-        <RightPanel
-          stage={stage}
-          signals={signals}
-          rounds={session.rounds}
-          currentRound={currentRound}
-          tribes={session.tribes}
-          assets={session.assets}
-          agents={session.agents}
-          recommendation={session.recommendation}
-          isWorking={isWorking}
-          onAdvance={handleAdvance}
-          onFinish={handleFinish}
-          onReset={actions.reset}
-          onAskBuyer={actions.askBuyer}
-          tavily={tavily}
-          videoUrl={videoUrl}
-        />
+              <MarketWorld3D
+                agents={stage === "idle" || stage === "researching" ? [] : session.agents}
+                tribes={session.tribes}
+                selectedAgentId={selectedAgentId}
+                onSelect={actions.selectAgent}
+                isWorking={isWorking}
+                currentRound={currentRound}
+                stageLabel={
+                  stage === "researching"
+                    ? "Researching market"
+                    : stage === "tribes_ready"
+                    ? "Awaiting first launch"
+                    : `Round ${currentRound}`
+                }
+              />
+            </div>
+
+            <RightPanel
+              stage={stage}
+              signals={signals}
+              rounds={session.rounds}
+              currentRound={currentRound}
+              tribes={session.tribes}
+              assets={session.assets}
+              agents={session.agents}
+              recommendation={session.recommendation}
+              isWorking={isWorking}
+              onAdvance={handleAdvance}
+              onFinish={handleFinish}
+              onReset={actions.reset}
+              onAskBuyer={actions.askBuyer}
+              tavily={tavily}
+              videoUrl={videoUrl}
+            />
+          </>
+        )}
       </main>
 
       <BuyerDrawer

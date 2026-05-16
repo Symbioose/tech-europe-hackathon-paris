@@ -4,9 +4,7 @@
 
 Built for the **Tech: Europe Paris AI Hackathon** (May 16, 2026).
 
-Crucible sits in the emerging AI-led research category alongside products like [Listen Labs](https://listenlabs.ai/) and [Societies.io](https://societies.io/), but focuses on the step before real interviews: **narrow the market first, then validate with humans**.
-
-**Punchline:** don't guess. Simulate.
+Crucible focuses on the step before real interviews: **narrow the market first, then validate with humans**.
 
 ---
 
@@ -57,20 +55,20 @@ Talk track:
 
 ```mermaid
 flowchart LR
-  A[Launch setup<br/>Product URL + business question] --> B[/api/run<br/>SSE stream/]
-  B --> C[Tavily<br/>product, competitors, pricing, trends, community]
-  B --> D[OpenAI<br/>product brief + 7 customer populations]
-  D --> E[70 synthetic buyers<br/>10 per population]
-  D --> F[FAL Flux Schnell<br/>7 creatives + regenerations]
-  E --> G[3D market world<br/>animated clickable buyers]
-  F --> H[Tribe cards<br/>creative + hook per population]
-  G --> I[/api/round<br/>tribe-level reaction simulation]
+  A["Launch setup<br/>Product URL + business question"] --> B["API run<br/>SSE stream"]
+  B --> C["Tavily<br/>product, competitors, pricing, trends, community"]
+  B --> D["OpenAI<br/>product brief + 7 customer populations"]
+  D --> E["70 synthetic buyers<br/>10 per population"]
+  D --> F["FAL Flux Schnell<br/>7 creatives + regenerations"]
+  E --> G["3D market world<br/>animated clickable buyers"]
+  F --> H["Tribe cards<br/>creative + hook per population"]
+  G --> I["API round<br/>tribe-level reaction simulation"]
   H --> I
-  I --> J[Learning loop<br/>converted, curious, seen, repelled]
-  J --> K[/api/finalize<br/>targeting plan + TAM/SAM/SOM + validation next step]
-  G --> L[/api/ask-buyer<br/>persona Q&A]
-  L --> M[Gradium<br/>voice playback]
-  K --> N[FAL video / Ken Burns fallback<br/>finale creative]
+  I --> J["Learning loop<br/>converted, curious, seen, repelled"]
+  J --> K["API finalize<br/>targeting plan + TAM/SAM/SOM + validation next step"]
+  G --> L["API ask buyer<br/>persona Q&A"]
+  L --> M["Gradium<br/>voice playback"]
+  K --> N["FAL video or Ken Burns fallback<br/>finale creative"]
 ```
 
 ## Stack

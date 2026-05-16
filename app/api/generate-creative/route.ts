@@ -10,22 +10,27 @@ function buildPrompt(
   hook: string,
   assetMode: string,
 ): string {
-  const base = `${productName} product advertisement targeting ${tribeName}. The core message: "${hook}".`;
-  let style: string;
+  const hint = hook
+    ? `The campaign idea: "${hook}". Convey the emotion of that moment, not the words themselves.`
+    : "";
+  const subject = `A single person from the world of ${tribeName} — caught in a candid, true-to-life moment that ${productName} is built for.`;
 
+  let style: string;
   if (assetMode === "image") {
     style =
-      "Static print ad. Clean, minimal layout, premium studio photography, bold typography frame. High contrast. No text overlay. No UI elements.";
+      "Editorial print campaign · single hero subject · premium studio lighting · shallow depth of field · rich filmic color · negative space for a tagline · centered composition.";
   } else if (assetMode === "video") {
     style =
-      "Video storyboard frame. Cinematic first frame with shallow depth of field, lifestyle photography, aspirational mood. No text overlay. No UI elements.";
+      "Cinematic storyboard frame · anamorphic feel · soft natural light spilling through a window · subtle motion blur cue · aspirational lifestyle mood · 35mm grain.";
   } else {
-    // generate or copy — social ad
     style =
-      "Social media ad creative. Vibrant, eye-catching lifestyle photography, clean composition, mobile-first framing. No text overlay. No UI elements.";
+      "Modern social ad photography · candid lifestyle moment · clean uncluttered background · vibrant but mature palette · 35mm look, shallow depth of field · light from a single warm source.";
   }
 
-  return `${base} ${style} Photorealistic. Professional advertising quality.`;
+  const guardrails =
+    "Absolutely no text overlay, no captions, no watermarks, no logos, no UI mockups, no on-screen interface. Photorealistic. Award-winning advertising photography.";
+
+  return `${subject} ${hint} ${style} ${guardrails}`;
 }
 
 export async function POST(req: NextRequest) {

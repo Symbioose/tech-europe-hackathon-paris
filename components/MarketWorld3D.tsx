@@ -45,7 +45,7 @@ type AvatarRig = {
   group: THREE.Group;
   parts: Record<AvatarPart, THREE.InstancedMesh>;
   geometries: THREE.BufferGeometry[];
-  material: THREE.MeshBasicMaterial;
+  material: THREE.Material;
 };
 
 const WORLD_SCALE = 0.85;
@@ -106,7 +106,11 @@ function pick<T>(items: T[], seed: number, salt: number): T {
 function makeAvatarRig(max: number): AvatarRig {
   const group = new THREE.Group();
   const geometries: THREE.BufferGeometry[] = [];
-  const material = new THREE.MeshBasicMaterial({ vertexColors: true });
+  // InstancedMesh.setColorAt(i, color) populates the `instanceColor` attribute,
+  // which is multiplied with material.color (white = pass-through).
+  // `vertexColors: true` is wrong here — there are no per-vertex colors on these
+  // primitive geometries, so the shader samples nothing and renders black.
+  const material = new THREE.MeshLambertMaterial({ color: 0xffffff });
 
   function add(name: AvatarPart, geometry: THREE.BufferGeometry) {
     geometries.push(geometry);

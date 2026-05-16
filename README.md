@@ -1,23 +1,25 @@
 # Crucible
 
-> A self-improving launch agent. Paste a product URL. Watch the agent learn which tribe to target, which hook to lead with, and which page to send traffic to — in 3 simulated rounds.
+> **Synthetic market research for product launches.** Paste a B2B URL, get 70 simulated buyers reacting across 7 ICPs in real time, talk to any of them by voice, and walk away with a 4-block launch decision — in two minutes.
 
 Built for the **Tech: Europe Paris AI Hackathon** (May 16, 2026).
+
+Crucible sits in the same product category as [Societies.io](https://societies.io/) (enterprise synthetic personas at scale), positioned for **early-stage founders** rather than Fortune-500 strategy teams.
 
 ---
 
 ## What it does
 
-1. You paste a product URL.
-2. Tavily pulls competitor and trend signals.
-3. OpenAI generates 7 customer tribes (10 buyers each = 70 simulated buyers).
-4. OpenAI generates 7 launch campaigns — one per tribe — with hook, video script, landing headline, CTA, and DM reply.
+1. You paste a product URL (or pick a test type in the setup wizard).
+2. **Tavily** orchestrates three live web searches — reading the product page, finding competitors, surfacing market trends — and streams results into a visible orchestrator panel.
+3. **OpenAI** generates 7 customer tribes adapted to your test type (10 buyers each = 70 simulated buyers).
+4. **FAL Flux Schnell** generates 7 ad-creative images in parallel, one per tribe, painted onto each TribeCard as they arrive.
 5. The agent runs the campaigns through the simulated buyers across **3 rounds**:
    - **Round 1** — broad exploration, ~9% conversion.
-   - **Round 2** — rewrite the weak hooks based on what failed, ~18% conversion.
-   - **Round 3** — sharpen the winning message, ~31% conversion.
-6. After round 3, the agent returns one launch decision: target tribe, hook, landing headline, CTA, objection to avoid, and a recommended next action for tomorrow.
-7. Click any of the 70 buyers and ask them a question. They answer in persona (OpenAI). The hero buyer answers in voice (Gradium).
+   - **Round 2** — for the 2 worst-performing tribes, OpenAI rewrites the hook AND FAL regenerates the creative image in place (visible before/after). ~18% conversion.
+   - **Round 3** — sharpened on the strongest tribe. In the background, **FAL Veo3 fast** kicks off a single rich finale video built from every learning. ~31% conversion.
+6. The recommendation card lays out four explicit blocks: **WHO TO TARGET**, **WHAT TO SAY**, **WHERE TO SEND THEM**, **WHAT OBJECTION TO AVOID** — with a "Synthetic confidence · ~85%" badge.
+7. **Click any of the 70 buyers** in the 3D market and **hold the mic to ask them a question**. They answer in persona (OpenAI) and their voice plays back via **Gradium** (5 distinct voice profiles).
 
 ## Why this matters
 
@@ -35,13 +37,12 @@ Most founders burn a week and thousands of euros testing the wrong launch messag
 
 | Partner   | What it powers                                                | Live or fallback                                      |
 | --------- | ------------------------------------------------------------- | ----------------------------------------------------- |
-| OpenAI    | Product summary, tribe + campaign generation, buyer persona Q&A, learning synthesis | Live with `OPENAI_API_KEY`; falls back to demo data   |
-| Tavily    | URL extraction, competitor + viral trend signals              | Live with `TAVILY_API_KEY`; falls back to demo data   |
-| fal       | Winning short-form video creative for the recommendation     | Live with `FAL_KEY`; falls back to cached video path  |
-| Gradium   | Hero buyer voice response                                     | Live with `GRADIUM_API_KEY`; falls back to a cached macOS-synthesized clip |
-| SLNG      | Future outbound voice campaign layer (mentioned, not built)  | —                                                     |
+| OpenAI    | Product brief, 7 tribe generation (wizard-aware), Round 2 hook rewrites, buyer persona Q&A | Live with `OPENAI_API_KEY`; falls back to demo data |
+| Tavily    | Multi-step orchestrator — product page extract + competitors search + market trends search, streamed via SSE | Live with `TAVILY_API_KEY`; falls back to demo signals |
+| FAL       | Flux Schnell × 7 ad-creative images per tribe; +2 regenerated images on Round 2; Veo3 fast video at the finale (built from every learning) | Live with `FAL_KEY`; 9 pre-cached PNGs for the Oura fallback path; Ken Burns image loop if video timeouts |
+| Gradium   | Voice synthesis for any of the 70 buyers, mapped to 5 voice profiles (gender × age) derived from each persona | Live with `GRADIUM_API_KEY`; 5 macOS-synthesized m4a fallbacks (one per voice profile) |
 
-The current demo uses **deterministic ranking** to pick the winning tribe and surface the dominant objection. Pioneer is the natural next step for a fine-tuned reaction classifier (intent + objection + confidence), but the current hackathon demo uses deterministic ranking for reliability — see `lib/integrations/pioneer.ts` for the placeholder wrapper.
+The current demo uses **deterministic ranking** to pick the winning tribe and surface the dominant objection. Recommendation cards display a "Synthetic confidence · ~85%" badge — a deterministic v1 display value, derived from the gap between R3 winner conversion and runner-up. Never claimed as benchmark-validated.
 
 ## Run locally
 

@@ -6,8 +6,8 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const run = async () => {
   const browser = await chromium.launch({
-  args: ["--use-gl=angle", "--use-angle=swiftshader", "--ignore-gpu-blocklist"],
-});
+    args: ["--use-gl=angle", "--use-angle=swiftshader", "--ignore-gpu-blocklist"],
+  });
   const page = await browser.newPage({ viewport: { width: 1480, height: 920 } });
 
   const errors = [];
@@ -16,50 +16,42 @@ const run = async () => {
     if (msg.type() === "error") errors.push(`console.error: ${msg.text()}`);
   });
 
-  console.log("→ load");
-  await page.goto(BASE, { waitUntil: "networkidle" });
-  await page.waitForLoadState("domcontentloaded");
+  // 1. Wizard renders on first load (idle, not launched)
+  console.log("→ load wizard");
+  await page.goto(BASE, { waitUntil: "domcontentloaded" });
   await wait(500);
-  await page.screenshot({ path: "/tmp/smk-1-idle.png" });
+  await page.screenshot({ path: "/tmp/smk-1-wizard.png" });
 
-  console.log("→ click Run Crucible");
-  await page.getByRole("button", { name: /Run Crucible/i }).click();
-  // Wait for tribes to appear (start() takes ~2.25s).
-  await page.waitForSelector("text=Quantified-Self Biohackers", { timeout: 15000 });
-  await wait(800);
+  // 2. Skip wizard to tribes via URL shortcut — exercises the demo path
+  console.log("→ jump to tribes via ?stage=tribes");
+  await page.goto(`${BASE}/?stage=tribes`, { waitUntil: "domcontentloaded" });
+  await wait(1500);
   await page.screenshot({ path: "/tmp/smk-2-tribes.png" });
 
-  console.log("→ click Run Round 1");
-  await page.getByRole("button", { name: /Run Round 1/i }).click();
-  await wait(2000);
-  await page.screenshot({ path: "/tmp/smk-3-r1.png" });
-
-  console.log("→ click Run Round 2");
-  await page.getByRole("button", { name: /Run Round 2/i }).click();
-  await wait(2000);
-  await page.screenshot({ path: "/tmp/smk-4-r2.png" });
-
-  console.log("→ click Run Round 3");
-  await page.getByRole("button", { name: /Run Round 3/i }).click();
-  await wait(3000);
-  await page.screenshot({ path: "/tmp/smk-5-r3.png" });
-
-  console.log("→ expand activity feed");
-  await page.locator("button:has-text('Buyer reactions')").first().click();
-  await wait(500);
-  await page.screenshot({ path: "/tmp/smk-6-feed.png" });
-
-  console.log("→ click Claire's praise message");
-  // Click the feed item with Claire's name (opens BuyerDrawer via agent_id link).
-  await page.locator("text=Claire Bertrand").first().click();
-  await wait(700);
-  await page.screenshot({ path: "/tmp/smk-7-drawer.png" });
-
-  console.log("→ ask question");
-  await page.fill('input[placeholder*="Why did you click"]', "Why did you click?");
-  await page.getByRole("button", { name: /^Ask$/i }).click();
+  // 3. Recommendation card with 4 blocks + confidence badge
+  console.log("→ jump to winner state via ?stage=winner");
+  await page.goto(`${BASE}/?stage=winner`, { waitUntil: "domcontentloaded" });
   await wait(1500);
-  await page.screenshot({ path: "/tmp/smk-8-answer.png" });
+  await page.waitForSelector("text=/Synthetic confidence/i", { timeout: 5000 });
+  await page.waitForSelector("text=/Who to target/i", { timeout: 3000 });
+  await page.waitForSelector("text=/What to say/i", { timeout: 3000 });
+  await page.waitForSelector("text=/Where to send them/i", { timeout: 3000 });
+  await page.waitForSelector("text=/What objection to avoid/i", { timeout: 3000 });
+  await page.screenshot({ path: "/tmp/smk-3-winner.png" });
+  console.log("  ✓ 4 blocks + confidence badge present");
+
+  // 4. Buyer drawer opens with mic button (or text-input fallback)
+  console.log("→ open hero buyer drawer");
+  await page.goto(`${BASE}/?stage=winner&select=tribe_2_a1`, { waitUntil: "domcontentloaded" });
+  await wait(1200);
+  // Either mic button OR text input must be present
+  const micButton = await page.locator("button:has-text(/Hold to ask|🎙/i)").count();
+  const textInput = await page.locator('input[placeholder*="Why"]').count();
+  if (micButton === 0 && textInput === 0) {
+    throw new Error("Neither mic button nor text input found in BuyerDrawer");
+  }
+  await page.screenshot({ path: "/tmp/smk-4-drawer.png" });
+  console.log(`  ✓ drawer renders (mic=${micButton}, textInput=${textInput})`);
 
   if (errors.length) {
     console.error("ERRORS:", errors);

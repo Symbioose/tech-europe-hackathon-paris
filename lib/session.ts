@@ -27,6 +27,8 @@ export type TavilyState = {
   product: TavilyResult[] | null;
   competitors: TavilyResult[] | null;
   trends: TavilyResult[] | null;
+  pricing: TavilyResult[] | null;
+  community: TavilyResult[] | null;
 };
 
 export type ViewState = {
@@ -53,7 +55,7 @@ const initial: ViewState = {
   isWorking: false,
   signals: [],
   feed: [],
-  tavily: { product: null, competitors: null, trends: null },
+  tavily: { product: null, competitors: null, trends: null, pricing: null, community: null },
   regenState: {},
   videoRequestId: undefined,
   videoUrl: undefined,
@@ -340,7 +342,7 @@ export function useSession() {
           recommendation: finalize ? fallbackRecommendation : undefined,
         }),
         feed: [],
-        tavily: { product: null, competitors: null, trends: null },
+        tavily: { product: null, competitors: null, trends: null, pricing: null, community: null },
         regenState: {},
       });
     };
@@ -350,7 +352,7 @@ export function useSession() {
     else if (stage === "r3") buildAt(3, false);
     else if (stage === "winner") buildAt(3, true);
     // Reset tavily state for URL-stage shortcuts (no SSE was consumed)
-    setView((v) => ({ ...v, tavily: { product: null, competitors: null, trends: null } }));
+    setView((v) => ({ ...v, tavily: { product: null, competitors: null, trends: null, pricing: null, community: null } }));
 
     // Build cumulative feed for the URL-stage shortcut too.
     const fl: FeedMessage[] = [];
@@ -394,7 +396,7 @@ export function useSession() {
       currentRound: 0,
       session: buildFallbackSession(),
       feed: [],
-      tavily: { product: null, competitors: null, trends: null },
+      tavily: { product: null, competitors: null, trends: null, pricing: null, community: null },
     }));
 
     const headers = { "Content-Type": "application/json" };
@@ -475,6 +477,18 @@ export function useSession() {
               setView((v) => ({
                 ...v,
                 tavily: { ...v.tavily, trends: parsed as import("@/lib/integrations/tavily").TavilyResult[] },
+              }));
+              break;
+            case "tavily:pricing":
+              setView((v) => ({
+                ...v,
+                tavily: { ...v.tavily, pricing: parsed as import("@/lib/integrations/tavily").TavilyResult[] },
+              }));
+              break;
+            case "tavily:community":
+              setView((v) => ({
+                ...v,
+                tavily: { ...v.tavily, community: parsed as import("@/lib/integrations/tavily").TavilyResult[] },
               }));
               break;
             case "brief":

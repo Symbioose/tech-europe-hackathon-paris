@@ -1,9 +1,11 @@
-import type { BuyerAgent, AgentState } from "@/lib/types";
+import type { BuyerAgent, AgentState, VoiceProfile } from "@/lib/types";
 
 type AgentSeed = {
   name: string;
   role: string;
 };
+
+const VOICE_ROTATION: VoiceProfile[] = ["f-young", "f-mid", "m-young", "m-mid", "m-mature"];
 
 const tribeSeeds: Record<string, AgentSeed[]> = {
   tribe_1: [
@@ -117,10 +119,12 @@ const offsets: { dx: number; dy: number }[] = [
 
 export const baseAgents: BuyerAgent[] = (() => {
   const all: BuyerAgent[] = [];
+  let globalIdx = 0;
   for (const [tribeId, seeds] of Object.entries(tribeSeeds)) {
     const center = clusterCenters[tribeId];
     seeds.forEach((seed, i) => {
       const off = offsets[i];
+      const isHero = tribeId === "tribe_2" && i === 0;
       all.push({
         id: `${tribeId}_a${i + 1}`,
         tribeId,
@@ -129,8 +133,10 @@ export const baseAgents: BuyerAgent[] = (() => {
         x: center.cx + off.dx,
         y: center.cy + off.dy,
         state: "idle",
-        isHero: tribeId === "tribe_2" && i === 0,
+        isHero,
+        voiceProfile: isHero ? "f-young" : VOICE_ROTATION[globalIdx % VOICE_ROTATION.length],
       });
+      globalIdx++;
     });
   }
   return all;

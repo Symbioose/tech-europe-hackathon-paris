@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
-import { answerInPersona } from "@/lib/integrations/openai";
 import { gradiumSpeak } from "@/lib/integrations/gradium";
 import { heroBuyerFeedback } from "@/lib/demo-data";
-import type { BuyerAgent, Tribe } from "@/lib/types";
+import type { BuyerAgent, Tribe, VoiceProfile } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -19,13 +18,52 @@ const fallbackByState: Record<string, string> = {
     "I haven't been targeted yet — I'm in the cohort waiting on the next campaign.",
 };
 
+async function openaiPersona(
+  buyer: BuyerAgent,
+  tribe: Tribe,
+  question: string,
+  hookSeen: string,
+): Promise<string | null> {
+  const key = process.env.OPENAI_API_KEY;
+  if (!key) return null;
+  const model = process.env.OPENAI_MODEL ?? "gpt-4o-mini";
+
+  const system = `You roleplay as ${buyer.name}, a ${buyer.role}. You belong to tribe "${tribe.name}". Main pain: ${tribe.mainPain}. Top objection: ${tribe.topObjection}. Stay in character. Reply in 2-3 short sentences. Reference how the hook you saw made you feel — concrete, not generic. If you didn't convert, explain the specific block.`;
+  const user = `You just saw an ad with hook: "${hookSeen ?? "Generic hook"}". The user asks: "${question}". Answer in character, max 3 sentences.`;
+
+  try {
+    const res = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${key}`,
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: "system", content: system },
+          { role: "user", content: user },
+        ],
+        temperature: 0.7,
+        max_tokens: 200,
+      }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return (data?.choices?.[0]?.message?.content as string) ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export async function POST(req: Request) {
   const body = (await req.json().catch(() => ({}))) as {
     buyer?: BuyerAgent;
     tribe?: Tribe;
     question?: string;
+    hookSeen?: string;
   };
-  const { buyer, tribe, question } = body;
+  const { buyer, tribe, question, hookSeen } = body;
 
   if (!buyer || !tribe || !question) {
     return NextResponse.json({ error: "buyer, tribe, question required" }, { status: 400 });
@@ -33,7 +71,7 @@ export async function POST(req: Request) {
 
   let text: string | null = null;
   try {
-    text = await answerInPersona(buyer, tribe, question);
+    text = await openaiPersona(buyer, tribe, question, hookSeen ?? "Generic hook");
   } catch {
     text = null;
   }
@@ -46,17 +84,12 @@ export async function POST(req: Request) {
     }
   }
 
+  const profile: VoiceProfile = buyer.voiceProfile ?? "f-mid";
   let audioUrl: string | null = null;
-  if (buyer.isHero) {
-    // Try Gradium for hero buyer only — keep latency predictable.
-    try {
-      audioUrl = await gradiumSpeak(text);
-    } catch {
-      audioUrl = null;
-    }
-    if (!audioUrl) {
-      audioUrl = "/demo/buyer-voice.m4a";
-    }
+  try {
+    audioUrl = await gradiumSpeak(text, profile);
+  } catch {
+    audioUrl = null;
   }
 
   return NextResponse.json({

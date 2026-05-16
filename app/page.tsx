@@ -208,6 +208,11 @@ export default function Page() {
         agent={selectedAgent}
         tribe={selectedTribe}
         onClose={() => actions.selectAgent(null)}
+        hookSeen={
+          selectedTribe
+            ? session.assets.find((a) => a.tribeId === selectedTribe.id)?.hook
+            : undefined
+        }
       />
 
       <ActivityFeed

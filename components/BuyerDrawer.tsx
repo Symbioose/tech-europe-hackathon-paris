@@ -1,27 +1,61 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import type { BuyerAgent, Tribe } from "@/lib/types";
 import { stateColor } from "@/lib/simulation";
+import { isSupported, createRecognition } from "@/lib/voice/recognition";
+import { play, stop as stopAudio } from "@/lib/voice/playback";
+
+type RecordingState = "idle" | "recording" | "thinking" | "speaking";
 
 type Props = {
   agent: BuyerAgent | null;
   tribe: Tribe | null;
   onClose: () => void;
+  hookSeen?: string;
 };
 
-export function BuyerDrawer({ agent, tribe, onClose }: Props) {
+export function BuyerDrawer({ agent, tribe, onClose, hookSeen }: Props) {
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState<string | null>(null);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [isAsking, setIsAsking] = useState(false);
 
+  // Voice state
+  const [recordingState, setRecordingState] = useState<RecordingState>("idle");
+  const [interim, setInterim] = useState("");
+  const [transcript, setTranscript] = useState("");
+  const [answerText, setAnswerText] = useState("");
+  const [supported] = useState(() => isSupported());
+  const recRef = useRef<ReturnType<typeof createRecognition> | null>(null);
+
   useEffect(() => {
     setQuestion("");
     setAnswer(null);
     setAudioUrl(null);
+    setInterim("");
+    setTranscript("");
+    setAnswerText("");
+    setRecordingState("idle");
   }, [agent?.id]);
+
+  // Pre-warm mic permission on mount
+  useEffect(() => {
+    if (typeof navigator !== "undefined" && navigator.mediaDevices) {
+      navigator.mediaDevices
+        .getUserMedia({ audio: true })
+        .then((s) => s.getTracks().forEach((t) => t.stop()))
+        .catch(() => {});
+    }
+  }, []);
+
+  // Cleanup audio on unmount
+  useEffect(() => {
+    return () => {
+      stopAudio();
+    };
+  }, []);
 
   if (!agent || !tribe) return null;
   const color = stateColor(agent.state);
@@ -33,7 +67,7 @@ export function BuyerDrawer({ agent, tribe, onClose }: Props) {
       const res = await fetch("/api/ask-buyer", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ buyer: agent, tribe, question }),
+        body: JSON.stringify({ buyer: agent, tribe, question, hookSeen }),
       });
       const data = await res.json();
       setAnswer(data.text);
@@ -47,6 +81,83 @@ export function BuyerDrawer({ agent, tribe, onClose }: Props) {
       setIsAsking(false);
     }
   }
+
+  function startListen() {
+    if (!agent || !tribe) return;
+    setTranscript("");
+    setInterim("");
+    setAnswerText("");
+    setRecordingState("recording");
+    stopAudio();
+
+    recRef.current = createRecognition({
+      lang: "en-US",
+      onInterim: (text) => setInterim(text),
+      onFinal: (text) => {
+        setTranscript((prev) => prev + text);
+        setInterim("");
+      },
+      onError: (msg) => {
+        console.warn("STT error:", msg);
+        setRecordingState("idle");
+      },
+    });
+    recRef.current.start();
+  }
+
+  async function stopListen() {
+    recRef.current?.stop();
+    recRef.current = null;
+
+    const captured = transcript + interim;
+    setInterim("");
+
+    if (!captured.trim() || !agent || !tribe) {
+      setRecordingState("idle");
+      return;
+    }
+
+    setRecordingState("thinking");
+    try {
+      const res = await fetch("/api/ask-buyer", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          buyer: agent,
+          tribe,
+          question: captured.trim(),
+          hookSeen,
+        }),
+      });
+      const data = await res.json();
+      setAnswerText(data.text ?? "");
+      const url: string | null = data.audioUrl ?? null;
+
+      if (url) {
+        setRecordingState("speaking");
+        await play(url);
+        setRecordingState("idle");
+      } else {
+        setRecordingState("idle");
+      }
+    } catch {
+      setAnswerText(
+        agent.feedback ??
+          "It clicked because the pain was specific. The 3am moment turned a vague bad night into evidence I could show myself.",
+      );
+      setRecordingState("idle");
+    }
+  }
+
+  const micLabel: Record<RecordingState, string> = {
+    idle: "Hold to ask",
+    recording: "Listening…",
+    thinking: "Thinking…",
+    speaking: "Speaking…",
+  };
+
+  const micActive = recordingState === "recording";
+  const micBusy = recordingState === "thinking" || recordingState === "speaking";
 
   return (
     <AnimatePresence>
@@ -138,6 +249,37 @@ export function BuyerDrawer({ agent, tribe, onClose }: Props) {
               Ask this buyer
             </div>
             <div className="flex flex-col gap-2">
+              {/* Mic button — shown when browser supports STT */}
+              {supported && (
+                <button
+                  onMouseDown={startListen}
+                  onMouseUp={stopListen}
+                  onTouchStart={(e) => { e.preventDefault(); startListen(); }}
+                  onTouchEnd={(e) => { e.preventDefault(); stopListen(); }}
+                  disabled={micBusy}
+                  className={[
+                    "w-full px-3 py-2.5 rounded-lg font-medium text-[12.5px] transition-all select-none",
+                    micActive
+                      ? "bg-flame-500 text-ink-950 scale-[0.97] shadow-inner"
+                      : micBusy
+                      ? "bg-ink-700 text-ink-300 cursor-not-allowed"
+                      : "bg-ink-800 border border-ink-600 hover:border-flame-500/60 hover:bg-ink-750 text-ink-100",
+                  ].join(" ")}
+                >
+                  {micActive ? "🎙 " : micBusy ? "" : "🎙 "}
+                  {micLabel[recordingState]}
+                </button>
+              )}
+
+              {/* Interim transcript display while recording */}
+              {(interim || (transcript && recordingState === "recording")) && (
+                <div className="px-3 py-1.5 rounded-lg bg-ink-850 border border-ink-700 text-[11px] text-ink-300 italic min-h-[28px]">
+                  {transcript}
+                  <span className="text-ink-500">{interim}</span>
+                </div>
+              )}
+
+              {/* Text fallback — always visible as backup */}
               <input
                 type="text"
                 value={question}
@@ -146,7 +288,9 @@ export function BuyerDrawer({ agent, tribe, onClose }: Props) {
                   if (e.key === "Enter") ask();
                 }}
                 placeholder={
-                  agent.state === "converted"
+                  supported
+                    ? "Or type your question…"
+                    : agent.state === "converted"
                     ? "Why did you click?"
                     : "What stopped you?"
                 }
@@ -163,6 +307,29 @@ export function BuyerDrawer({ agent, tribe, onClose }: Props) {
           </div>
         </div>
 
+        {/* Voice answer panel */}
+        {answerText && (
+          <motion.div
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mx-5 mb-2 px-4 py-3 rounded-xl border border-flame-500/30 bg-flame-900/10"
+          >
+            <div className="flex items-center gap-2 mb-1.5">
+              <div className="text-[10px] uppercase tracking-[0.18em] text-flame-300">
+                {agent.name.split(" ")[0]} responds · voice
+              </div>
+              {recordingState === "speaking" && (
+                <span className="text-[10px] text-flame-400 animate-pulse">🔊 Speaking…</span>
+              )}
+            </div>
+            <p className="text-[13px] leading-relaxed text-ink-100">{answerText}</p>
+            <div className="mt-1.5 text-[10px] uppercase tracking-[0.18em] text-ink-400">
+              🎤 Gradium · voice synthesis
+            </div>
+          </motion.div>
+        )}
+
+        {/* Text answer panel (from text input) */}
         {answer && (
           <motion.div
             initial={{ opacity: 0, y: 6 }}
@@ -182,7 +349,7 @@ export function BuyerDrawer({ agent, tribe, onClose }: Props) {
             </div>
             <p className="text-[13px] leading-relaxed text-ink-100">{answer}</p>
             <div className="mt-1.5 text-[10px] uppercase tracking-[0.18em] text-ink-400">
-              {audioUrl ? "Voice · Gradium" : "Persona · OpenAI"}
+              {audioUrl ? "🎤 Gradium · voice synthesis" : "Persona · OpenAI"}
             </div>
           </motion.div>
         )}

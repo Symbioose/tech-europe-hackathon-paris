@@ -23,7 +23,7 @@ export function stateColor(state: AgentState): {
     case "curious":
       return { fill: "#ffcf6b", ring: "rgba(255,207,107,0.55)", label: "Curious" };
     case "seen":
-      return { fill: "#6b7390", ring: "rgba(107,115,144,0.55)", label: "Saw it" };
+      return { fill: "#6bb6ff", ring: "rgba(107,182,255,0.55)", label: "Saw it" };
     case "repelled":
       return { fill: "#ff5470", ring: "rgba(255,84,112,0.55)", label: "Repelled" };
     case "idle":

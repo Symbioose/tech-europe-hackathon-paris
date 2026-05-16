@@ -11,7 +11,7 @@ type Props = {
   selectedAgentId: string | null;
   onSelect: (id: string | null) => void;
   isWorking: boolean;
-  currentRound: 0 | 1 | 2 | 3;
+  currentRound: number;
   stageLabel?: string;
 };
 
@@ -54,7 +54,7 @@ const MAX_AGENTS = 70;
 const STATE_COLOR = {
   converted: new THREE.Color("#3affe9"),
   curious: new THREE.Color("#ffcf6b"),
-  seen: new THREE.Color("#7d8db8"),
+  seen: new THREE.Color("#6bb6ff"),
   repelled: new THREE.Color("#ff4768"),
   idle: new THREE.Color("#7c8cff"),
 };
@@ -260,6 +260,21 @@ export function MarketWorld3D({
     const avatars = makeAvatarRig(MAX_AGENTS);
     scene.add(avatars.group);
 
+    // Invisible click hitbox cylinder per agent — big enough to catch sloppy clicks
+    // at the diorama scale. Material is fully transparent but `visible: true` so the
+    // raycaster considers it. depthWrite off so it never occludes anything visually.
+    const hitGeometry = new THREE.CylinderGeometry(1.6, 1.6, 4.6, 10);
+    const hitMaterial = new THREE.MeshBasicMaterial({
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    });
+    const hitMesh = new THREE.InstancedMesh(hitGeometry, hitMaterial, MAX_AGENTS);
+    hitMesh.count = 0;
+    hitMesh.frustumCulled = false;
+    scene.add(hitMesh);
+
     const agentHalo = new THREE.InstancedMesh(
       new THREE.RingGeometry(0.7, 1.15, 24),
       new THREE.MeshBasicMaterial({
@@ -287,6 +302,11 @@ export function MarketWorld3D({
     }
 
     function intersectAvatar() {
+      // Raycast against the invisible hitbox cylinders first — wider catch zone.
+      const hits = raycaster.intersectObject(hitMesh, false);
+      const match = hits.find((hit) => hit.instanceId !== undefined);
+      if (match) return match;
+      // Fallback: precise hit on the avatar rig parts.
       return raycaster
         .intersectObjects(Object.values(avatars.parts), false)
         .find((hit) => hit.instanceId !== undefined);
@@ -361,6 +381,7 @@ export function MarketWorld3D({
       const list = agentsRef.current;
       for (const mesh of Object.values(avatars.parts)) mesh.count = list.length;
       agentHalo.count = list.length;
+      hitMesh.count = list.length;
 
       for (let i = 0; i < list.length; i++) {
         const agent = list[i];
@@ -458,6 +479,15 @@ export function MarketWorld3D({
           new THREE.Vector3(haloScale, haloScale, haloScale),
         );
         agentHalo.setMatrixAt(i, matrix);
+
+        // Invisible click hitbox cylinder — centered on the buyer, big radius.
+        const hitScale = finalScale * (hovered || selected ? 1.15 : 1);
+        matrix.compose(
+          new THREE.Vector3(wx, 2.2, wz),
+          new THREE.Quaternion(),
+          new THREE.Vector3(hitScale, hitScale, hitScale),
+        );
+        hitMesh.setMatrixAt(i, matrix);
       }
 
       for (const mesh of Object.values(avatars.parts)) {
@@ -465,6 +495,7 @@ export function MarketWorld3D({
         if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
       }
       agentHalo.instanceMatrix.needsUpdate = true;
+      hitMesh.instanceMatrix.needsUpdate = true;
 
       const labels: Overlay[] = [];
       const rect = renderer.domElement.getBoundingClientRect();
@@ -536,6 +567,8 @@ export function MarketWorld3D({
       avatars.material.dispose();
       agentHalo.geometry.dispose();
       if (agentHalo.material instanceof THREE.Material) agentHalo.material.dispose();
+      hitMesh.geometry.dispose();
+      if (hitMesh.material instanceof THREE.Material) hitMesh.material.dispose();
       halos.children.forEach((child) => {
         const mesh = child as THREE.Mesh;
         mesh.geometry?.dispose();
@@ -622,7 +655,7 @@ export function MarketWorld3D({
           {[
             { label: "Converted", color: "#3affe9" },
             { label: "Curious", color: "#ffcf6b" },
-            { label: "Saw it", color: "#7d8db8" },
+            { label: "Saw it", color: "#6bb6ff" },
             { label: "Repelled", color: "#ff4768" },
           ].map((item) => (
             <div key={item.label} className="flex items-center gap-1.5 text-[11px] text-white/70">

@@ -172,6 +172,8 @@ export function RightPanel({
               product={tavily.product}
               competitors={tavily.competitors}
               trends={tavily.trends}
+              pricing={tavily.pricing}
+              community={tavily.community}
             />
           </Panel>
         )}

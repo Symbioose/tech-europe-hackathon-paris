@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { AppStage, Session } from "./types";
+import type { AppStage, Recommendation, Session } from "./types";
 import type { LaunchSetupValues } from "@/components/LaunchSetup";
 import type { TavilyResult } from "@/lib/integrations/tavily";
 import {
@@ -68,6 +68,27 @@ function buildSignals(session: Session): string[] {
 
 function delay(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+function buildRecommendation(session: Session): Recommendation {
+  // Pick the winner from the most recent round's tribeScores (sorted DESC by conversionRate).
+  // Fall back to the Oura demo recommendation when live data is missing.
+  const lastRound = [...session.rounds].sort((a, b) => b.round - a.round)[0];
+  const winnerScore = lastRound?.tribeScores?.[0];
+  if (!winnerScore) return fallbackRecommendation;
+  const winningTribe = session.tribes.find((t) => t.id === winnerScore.tribeId);
+  const winningAsset = session.assets.find((a) => a.tribeId === winnerScore.tribeId);
+  if (!winningTribe || !winningAsset) return fallbackRecommendation;
+  return {
+    winningTribeId: winnerScore.tribeId,
+    winningHook: winningAsset.hook,
+    landingHeadline: winningAsset.landingHeadline,
+    cta: winningAsset.cta,
+    objectionToAvoid: winningTribe.topObjection,
+    whyItWon: winnerScore.representativeFeedback,
+    nextAction: `Lead the launch with this hook on the platform best matching ${winningTribe.platform}. Skip the runner-up tribes for the first wave.`,
+    ranker: "deterministic",
+  };
 }
 
 export function useSession() {
@@ -577,7 +598,7 @@ export function useSession() {
       setView((v) => ({
         ...v,
         stage: "winner_ready",
-        session: { ...v.session, recommendation: fallbackRecommendation },
+        session: { ...v.session, recommendation: buildRecommendation(v.session) },
       }));
     }
   }, []);
@@ -590,7 +611,7 @@ export function useSession() {
     setView((v) => ({
       ...v,
       stage: "winner_ready",
-      session: { ...v.session, recommendation: fallbackRecommendation },
+      session: { ...v.session, recommendation: buildRecommendation(v.session) },
     }));
   }, []);
 

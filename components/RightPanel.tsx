@@ -127,9 +127,9 @@ export function RightPanel({
           )}
         </AnimatePresence>
 
-        {/* Tavily signals */}
+        {/* Market signals */}
         {(stage !== "idle" || signals.length > 0) && (
-          <Panel title="Market signals" badge="Tavily">
+          <Panel title="Market signals" badge="Research">
             {signals.length === 0 ? (
               <SignalsLoading />
             ) : (
@@ -262,17 +262,17 @@ function ActionButton({
 
   if (stage === "researching") {
     label = "Researching…";
-    helper = "Pulling competitor and trend signals from Tavily";
+    helper = "Reading the product and preparing buyer tribes";
   } else if (stage === "tribes_ready") {
     label = "Run Round 1";
-    helper = "Broad exploration · expect ~9% conversion";
+    helper = "Explore every tribe with the first campaign set";
   } else if (stage === "round_1") {
     label = "Run Round 2";
-    helper = "Rewrite weak hooks · expect ~18% conversion";
+    helper = "Rewrite weak hooks from the first reactions";
     tone = "ready";
   } else if (stage === "round_2") {
     label = "Run Round 3";
-    helper = "Sharpen the winning message · expect ~31% conversion";
+    helper = "Focus on the strongest tribe and objection";
     tone = "ready";
   } else if (stage === "round_3") {
     label = "Reveal recommendation";

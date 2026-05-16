@@ -37,8 +37,6 @@ export function ActivityFeed({ messages, tribes, onAgentClick }: Props) {
   const tribeMap = new Map(tribes.map((t) => [t.id, t]));
 
   const unread = messages.filter((m) => !seenIds.has(m.id)).length;
-  const visible = expanded ? messages : messages.slice(-3);
-
   useEffect(() => {
     if (!messages.length) return;
     const ids = messages.map((m) => m.id);
@@ -109,35 +107,6 @@ export function ActivityFeed({ messages, tribes, onAgentClick }: Props) {
           </motion.div>
         )}
       </AnimatePresence>
-
-      {/* Collapsed preview when shut */}
-      {!expanded && visible.length > 0 && (
-        <div className="max-w-[280px] flex flex-col gap-1.5 pointer-events-none">
-          {visible.map((m) => (
-            <motion.div
-              key={`mini-${m.id}`}
-              initial={{ opacity: 0, x: 8 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.3 }}
-              className="rounded-xl px-2.5 py-1.5"
-              style={{
-                background: TYPE_BG[m.type],
-                border: `1px solid ${TYPE_BORDER[m.type]}`,
-              }}
-            >
-              <div
-                className="text-[10px] font-semibold mb-0.5"
-                style={{ color: TYPE_LABEL_COLOR[m.type] }}
-              >
-                {m.agentName}
-              </div>
-              <div className="text-[11.5px] leading-snug text-white/85 line-clamp-2">
-                {m.text}
-              </div>
-            </motion.div>
-          ))}
-        </div>
-      )}
 
       <button
         onClick={() => setExpanded((v) => !v)}

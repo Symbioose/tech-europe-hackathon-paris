@@ -9,6 +9,8 @@ type Props = {
   onRun: (url: string, platform: Platform) => void;
   disabled: boolean;
   busyLabel?: string;
+  initialUrl?: string;
+  initialPlatform?: Platform;
 };
 
 const platforms: { id: Platform; label: string }[] = [
@@ -18,9 +20,15 @@ const platforms: { id: Platform; label: string }[] = [
   { id: "linkedin", label: "LinkedIn" },
 ];
 
-export function TopBar({ onRun, disabled, busyLabel }: Props) {
-  const [url, setUrl] = useState("https://ouraring.com");
-  const [platform, setPlatform] = useState<Platform>("auto");
+export function TopBar({
+  onRun,
+  disabled,
+  busyLabel,
+  initialUrl = "https://ouraring.com",
+  initialPlatform = "auto",
+}: Props) {
+  const [url, setUrl] = useState(initialUrl);
+  const [platform, setPlatform] = useState<Platform>(initialPlatform);
 
   return (
     <div

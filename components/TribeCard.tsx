@@ -1,8 +1,9 @@
 "use client";
 
-import { motion } from "framer-motion";
-import type { Tribe, TribeScore } from "@/lib/types";
+import { AnimatePresence, motion } from "framer-motion";
+import type { BuyerAgent, Tribe, TribeScore } from "@/lib/types";
 import clsx from "clsx";
+import { stateColor } from "@/lib/simulation";
 import { RegenerationOverlay } from "./RegenerationOverlay";
 
 type Props = {
@@ -14,6 +15,11 @@ type Props = {
   isRegenerating?: boolean;
   oldHook?: string;
   newHook?: string;
+  agents?: BuyerAgent[];
+  isExpanded?: boolean;
+  onToggleExpand?: () => void;
+  selectedAgentId?: string | null;
+  onSelectAgent?: (agentId: string) => void;
 };
 
 const platformLabel: Record<string, string> = {
@@ -23,16 +29,33 @@ const platformLabel: Record<string, string> = {
   auto: "AUTO",
 };
 
-export function TribeCard({ tribe, score, isWinner, index, creativeUrl, isRegenerating, oldHook, newHook }: Props) {
+export function TribeCard({
+  tribe,
+  score,
+  isWinner,
+  index,
+  creativeUrl,
+  isRegenerating,
+  oldHook,
+  newHook,
+  agents,
+  isExpanded,
+  onToggleExpand,
+  selectedAgentId,
+  onSelectAgent,
+}: Props) {
   const conversion = score ? Math.round(score.conversionRate * 100) : 0;
+  const expandable = (agents?.length ?? 0) > 0 && !!onToggleExpand;
   return (
     <motion.div
       layout
       initial={{ opacity: 0, x: -20 }}
       animate={{ opacity: 1, x: 0 }}
       transition={{ duration: 0.35, delay: index * 0.04 }}
+      onClick={() => onToggleExpand?.()}
       className={clsx(
         "group relative rounded-xl border backdrop-blur-2xl p-3.5 transition-all",
+        expandable && "cursor-pointer",
         isWinner
           ? "border-flame-400/70 shadow-glow"
           : "border-white/12 hover:border-white/25",
@@ -119,6 +142,78 @@ export function TribeCard({ tribe, score, isWinner, index, creativeUrl, isRegene
         oldHook={oldHook}
         newHook={newHook}
       />
+
+      {expandable && (
+        <div className="mt-3 flex items-center justify-between text-[10px] uppercase tracking-[0.16em] text-ink-400">
+          <span>{agents!.length} buyers</span>
+          <span className="text-ink-300">{isExpanded ? "Hide ▴" : "Show ▾"}</span>
+        </div>
+      )}
+
+      <AnimatePresence initial={false}>
+        {expandable && isExpanded && (
+          <motion.ul
+            key="agents"
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.25 }}
+            className="mt-2 -mx-1 overflow-hidden"
+          >
+            <div className="space-y-1 px-1 pt-1">
+              {agents!.map((agent) => {
+                const sc = stateColor(agent.state);
+                const isSelected = selectedAgentId === agent.id;
+                return (
+                  <li key={agent.id}>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onSelectAgent?.(agent.id);
+                      }}
+                      className={clsx(
+                        "w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-left transition-colors",
+                        isSelected
+                          ? "bg-white/[0.10] border border-white/25"
+                          : "border border-transparent hover:bg-white/[0.05]",
+                      )}
+                    >
+                      <span
+                        className="inline-block w-2 h-2 rounded-full shrink-0"
+                        style={{
+                          background: sc.fill,
+                          boxShadow: `0 0 6px ${sc.fill}80`,
+                        }}
+                        aria-label={sc.label}
+                      />
+                      <span className="flex-1 min-w-0">
+                        <span className="block text-[11.5px] text-ink-100 truncate">
+                          {agent.name}
+                          {agent.isHero && (
+                            <span className="ml-1 text-[9px] uppercase tracking-wider text-flame-300">
+                              hero
+                            </span>
+                          )}
+                        </span>
+                        <span className="block text-[10px] text-ink-400 truncate">
+                          {agent.role}
+                        </span>
+                      </span>
+                      <span
+                        className="text-[9px] uppercase tracking-[0.14em] shrink-0"
+                        style={{ color: sc.fill }}
+                      >
+                        {sc.label}
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+            </div>
+          </motion.ul>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }

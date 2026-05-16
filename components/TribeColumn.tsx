@@ -1,20 +1,52 @@
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { TribeCard } from "./TribeCard";
-import type { Tribe, TribeScore, LaunchAsset } from "@/lib/types";
+import type { BuyerAgent, Tribe, TribeScore, LaunchAsset } from "@/lib/types";
 
 type Props = {
   tribes: Tribe[];
   scores: TribeScore[];
   assets: LaunchAsset[];
+  agents: BuyerAgent[];
+  selectedAgentId: string | null;
+  onSelectAgent: (agentId: string) => void;
   winnerId?: string;
   visible: boolean;
   regenState?: Record<string, { isRegenerating: boolean; oldHook?: string; newHook?: string }>;
 };
 
-export function TribeColumn({ tribes, scores, assets, winnerId, visible, regenState }: Props) {
+export function TribeColumn({
+  tribes,
+  scores,
+  assets,
+  agents,
+  selectedAgentId,
+  onSelectAgent,
+  winnerId,
+  visible,
+  regenState,
+}: Props) {
   const scoreMap = new Map(scores.map((s) => [s.tribeId, s]));
+  const agentsByTribe = useMemo(() => {
+    const map = new Map<string, BuyerAgent[]>();
+    for (const a of agents) {
+      const list = map.get(a.tribeId) ?? [];
+      list.push(a);
+      map.set(a.tribeId, list);
+    }
+    return map;
+  }, [agents]);
+
+  const [expandedTribeId, setExpandedTribeId] = useState<string | null>(null);
+
+  // Auto-expand the tribe containing the currently selected agent.
+  useEffect(() => {
+    if (!selectedAgentId) return;
+    const agent = agents.find((a) => a.id === selectedAgentId);
+    if (agent) setExpandedTribeId(agent.tribeId);
+  }, [selectedAgentId, agents]);
 
   return (
     <div className="h-full flex flex-col">
@@ -37,6 +69,13 @@ export function TribeColumn({ tribes, scores, assets, winnerId, visible, regenSt
                 isRegenerating={regenState?.[t.id]?.isRegenerating}
                 oldHook={regenState?.[t.id]?.oldHook}
                 newHook={regenState?.[t.id]?.newHook}
+                agents={agentsByTribe.get(t.id) ?? []}
+                isExpanded={expandedTribeId === t.id}
+                onToggleExpand={() =>
+                  setExpandedTribeId((prev) => (prev === t.id ? null : t.id))
+                }
+                selectedAgentId={selectedAgentId}
+                onSelectAgent={onSelectAgent}
               />
             ))
           : Array.from({ length: 7 }).map((_, i) => (

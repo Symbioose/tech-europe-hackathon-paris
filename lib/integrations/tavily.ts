@@ -39,9 +39,11 @@ export async function extractPage(url: string): Promise<TavilyResult[] | null> {
   }
 }
 
-export async function searchCompetitors(
-  market: string,
-  productName: string,
+type TavilySearchResult = { title: string; url: string; content: string };
+
+async function tavilySearch(
+  query: string,
+  options: { max_results?: number; depth?: "basic" | "advanced" } = {},
 ): Promise<TavilyResult[] | null> {
   const key = process.env.TAVILY_API_KEY;
   if (!key) return null;
@@ -51,14 +53,14 @@ export async function searchCompetitors(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         api_key: key,
-        query: `Competitors and alternatives to ${productName} in the ${market} space`,
-        max_results: 4,
-        search_depth: "basic",
+        query,
+        max_results: options.max_results ?? 8,
+        search_depth: options.depth ?? "advanced",
       }),
     });
     if (!res.ok) return null;
     const data = await res.json();
-    const results: Array<{ title: string; url: string; content: string }> = data?.results ?? [];
+    const results: TavilySearchResult[] = data?.results ?? [];
     return results.map((r) => ({
       title: r.title,
       url: r.url,
@@ -70,32 +72,41 @@ export async function searchCompetitors(
   }
 }
 
+export async function searchCompetitors(
+  market: string,
+  productName: string,
+): Promise<TavilyResult[] | null> {
+  return tavilySearch(
+    `Top competitors and alternatives to ${productName} in the ${market} space — feature comparison, pricing differences, user complaints, market positioning`,
+    { max_results: 8, depth: "advanced" },
+  );
+}
+
 export async function searchTrends(market: string): Promise<TavilyResult[] | null> {
-  const key = process.env.TAVILY_API_KEY;
-  if (!key) return null;
-  try {
-    const res = await fetch("https://api.tavily.com/search", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        api_key: key,
-        query: `${market} viral trends and pain points in 2026`,
-        max_results: 4,
-        search_depth: "basic",
-      }),
-    });
-    if (!res.ok) return null;
-    const data = await res.json();
-    const results: Array<{ title: string; url: string; content: string }> = data?.results ?? [];
-    return results.map((r) => ({
-      title: r.title,
-      url: r.url,
-      snippet: (r.content ?? "").slice(0, 240),
-      favicon: faviconFor(r.url),
-    }));
-  } catch {
-    return null;
-  }
+  return tavilySearch(
+    `${market} buyer pain points, unmet needs, viral discussions, recurring complaints, and emerging behaviour shifts in 2026`,
+    { max_results: 8, depth: "advanced" },
+  );
+}
+
+export async function searchPricing(
+  productName: string,
+  market: string,
+): Promise<TavilyResult[] | null> {
+  return tavilySearch(
+    `Pricing benchmarks for ${productName} and similar ${market} products — plans, tiers, price ranges, what buyers pay today`,
+    { max_results: 6, depth: "advanced" },
+  );
+}
+
+export async function searchCommunity(
+  productName: string,
+  market: string,
+): Promise<TavilyResult[] | null> {
+  return tavilySearch(
+    `Reddit Hacker News Twitter discussions about ${productName} or ${market} — real user quotes, complaints, recommendations, switching stories`,
+    { max_results: 8, depth: "advanced" },
+  );
 }
 
 export async function tavilyExtract(url: string): Promise<TavilySnapshot | null> {

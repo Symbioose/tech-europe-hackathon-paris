@@ -1,5 +1,11 @@
 import { ouraBrief, tribes, baseAgents, assetsRound1 } from "@/lib/demo-data";
-import { extractPage, searchCompetitors, searchTrends } from "@/lib/integrations/tavily";
+import {
+  extractPage,
+  searchCommunity,
+  searchCompetitors,
+  searchPricing,
+  searchTrends,
+} from "@/lib/integrations/tavily";
 import { summarizeProduct, generateTribes, generateAssets } from "@/lib/integrations/openai";
 import type { TavilyResult } from "@/lib/integrations/tavily";
 import type { ProductBrief } from "@/lib/types";
@@ -64,6 +70,8 @@ export async function POST(req: Request) {
           emit("brief", ouraBrief);
           emit("tavily:competitors", []);
           emit("tavily:trends", []);
+          emit("tavily:pricing", []);
+          emit("tavily:community", []);
           emit("tribes:all", tribes);
           emit("agents", baseAgents);
           emit("initialAssets", assetsRound1);
@@ -116,20 +124,37 @@ export async function POST(req: Request) {
 
         emit("brief", brief);
 
-        // ── Step 3: competitors + trends in parallel ─────────────────────────
-        const [compResults, trendResults] = await Promise.all([
-          race(searchCompetitors(market, productName), 8000),
-          race(searchTrends(market), 8000),
-        ]);
+        // ── Step 3: 4 deep searches in parallel ──────────────────────────────
+        // Each lane streams its own event so the UI shows progressive depth.
+        const compP = race(searchCompetitors(market, productName), 10000);
+        const trendP = race(searchTrends(market), 10000);
+        const pricingP = race(searchPricing(productName, market), 10000);
+        const communityP = race(searchCommunity(productName, market), 10000);
 
-        emit("tavily:competitors", compResults ?? []);
-        emit("tavily:trends", trendResults ?? []);
+        // Emit each as soon as it resolves (not waiting for the slowest).
+        compP.then((r) => emit("tavily:competitors", r ?? []));
+        trendP.then((r) => emit("tavily:trends", r ?? []));
+        pricingP.then((r) => emit("tavily:pricing", r ?? []));
+        communityP.then((r) => emit("tavily:community", r ?? []));
+
+        const [compResults, trendResults, pricingResults, communityResults] = await Promise.all([
+          compP,
+          trendP,
+          pricingP,
+          communityP,
+        ]);
 
         // Enrich brief with signals before tribe generation
         const briefWithSignals: ProductBrief = {
           ...brief,
-          competitorSignals: (compResults ?? []).map((r) => r.title).filter(Boolean),
-          trendSignals: (trendResults ?? []).map((r) => r.title).filter(Boolean),
+          competitorSignals: [
+            ...((compResults ?? []).map((r) => r.title).filter(Boolean)),
+            ...((pricingResults ?? []).slice(0, 3).map((r) => r.title).filter(Boolean)),
+          ].slice(0, 8),
+          trendSignals: [
+            ...((trendResults ?? []).map((r) => r.title).filter(Boolean)),
+            ...((communityResults ?? []).slice(0, 3).map((r) => r.title).filter(Boolean)),
+          ].slice(0, 8),
         };
 
         // ── Step 4: generateTribes ───────────────────────────────────────────
